@@ -202,6 +202,8 @@ function groupKeyFor(nome){
   if (n.includes('francesco')) return 'francesco';
   if (n.includes('mimmo')) return 'mimmo';
   if (n.includes('vito')) return 'vito';
+  if (n.includes('gaspare')) return 'gaspare';
+  if (n.includes('admin')) return 'admin';
   return null;
 }
 
@@ -294,6 +296,8 @@ function baseShiftForKey(key, date){
   }
   if (key === 'mimmo') return { tipo:'mattina', auto:false };
   if (key === 'vito') return { tipo:'pomeriggio', auto:false };
+  if (key === 'gaspare') return { tipo:'giornata_intera', auto:false }; // sempre, incluso sabato
+  if (key === 'admin') return null; // nessun turno di default: solo se assegnato manualmente dal pannello Admin
   return null;
 }
 
@@ -315,6 +319,8 @@ function swapPartnersFor(key){
   if (GRUPPO_ROTAZIONE_KEYS.includes(key)) return GRUPPO_ROTAZIONE_KEYS.filter(k=>k!==key);
   if (key === 'mimmo') return ['vito'];
   if (key === 'vito') return ['mimmo'];
+  // Gaspare e Admin non hanno un flusso di richiesta scambio tra colleghi:
+  // eventuali riposi/coperture si gestiscono manualmente dal pannello Admin.
   return [];
 }
 
@@ -398,7 +404,7 @@ async function enterApp(){
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app-screen').style.display = 'flex';
   document.getElementById('header-title').textContent = 'Ciao ' + currentUser.nome;
-  document.getElementById('header-role').textContent = currentUser.ruolo === 'admin' ? 'Amministratore' : 'Addetto';
+  document.getElementById('header-role').textContent = currentUser.ruolo === 'admin' ? 'Amministratore' : currentUser.ruolo;
   document.getElementById('tab-admin-btn').style.display = currentUser.ruolo === 'admin' ? 'block' : 'none';
 
   await refreshOverrides();
