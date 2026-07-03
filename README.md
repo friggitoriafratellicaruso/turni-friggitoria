@@ -15,7 +15,7 @@ Se non ci sono ancora, aggiungili dalla sezione Addetti dell'app CrunchClub esis
 ## 3. Configura il numero WhatsApp admin
 Apri `index.html`, cerca "CONFIG" all'inizio dello script e imposta:
 ```js
-const ADMIN_WHATSAPP = '39XXXXXXXXXX'; // il tuo numero, senza +
+const ADMIN_WHATSAPP = '393926893010'; // il tuo numero, senza +
 ```
 URL e chiave Supabase sono già precompilati (stessi di CrunchClub).
 
