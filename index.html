@@ -70,18 +70,20 @@
   .day-head .ddate{font-size:11.5px; color:var(--char-soft);}
   .day-body{padding:10px 14px; display:flex; flex-direction:column; gap:8px;}
   .day-closed{padding:14px; text-align:center; color:var(--char-soft); font-size:13px; font-style:italic;}
-  .shift-row{display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:10px; background:rgba(43,33,27,0.03);}
-  .shift-badge{ width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-    font-size:14px; font-weight:700; color:#fff; flex-shrink:0; }
+  .shift-row{display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:10px; background:rgba(43,33,27,0.03); border:1.5px solid transparent;}
+  .shift-badge{ width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-size:19px; font-weight:700; color:#fff; flex-shrink:0; line-height:1; }
   .badge-intera{background:var(--gold-deep);}
   .badge-mezza{background:var(--sage);}
   .badge-mattina{background:#5B8FA8;}
   .badge-pomeriggio{background:#8B6BA8;}
   .shift-info{flex:1; min-width:0;}
-  .shift-name{font-weight:600; font-size:13.5px;}
-  .shift-time{font-size:11.5px; color:var(--char-soft);}
+  .shift-name{font-weight:600; font-size:12.5px; color:var(--char-soft);}
+  .shift-time{font-size:14px; font-weight:700; letter-spacing:.3px;}
   .swap-btn{ border:1px solid var(--line); background:var(--paper); border-radius:8px;
     font-size:11px; padding:6px 9px; color:var(--char); font-weight:600; flex-shrink:0; }
+  .shift-row.auto-swap{ background:#FBE9D6; border-color:var(--tomato); }
+  .auto-swap-tag{ font-size:10.5px; font-weight:700; color:var(--tomato); margin-top:2px; }
 
   .req-card{ background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); padding:14px; margin-bottom:10px; }
   .req-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;}
@@ -182,7 +184,7 @@ const SUPABASE_URL = 'https://wxhysgthyebydoupsjrh.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4aHlzZ3RoeWVieWRvdXBzanJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0NjEwNTcsImV4cCI6MjA5ODAzNzA1N30.93IVIg62GM8oPYvuvQ9xcvbwYPpbM0XzOPWM4RdIsic';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const ADMIN_WHATSAPP = '393926893010'; // numero admin in formato internazionale senza +
+const ADMIN_WHATSAPP = '39XXXXXXXXXX'; // numero admin in formato internazionale senza +
 
 /* =====================================================
    ANAGRAFICA & LOGICA PATTERN
@@ -210,11 +212,11 @@ const GRUPPO_ROTAZIONE_KEYS = ['toto', 'davide', 'francesco'];
 const GRUPPO_FISSO_KEYS = { mimmo: 'mattina', vito: 'pomeriggio' };
 
 const SHIFT_LABELS = {
-  giornata_intera: { nome:'Giornata intera', ora:'8:00 – 22:00', badge:'badge-intera', icon:'☀' },
-  mezza_giornata:  { nome:'Mezza giornata',  ora:'8:00 – 16:00', badge:'badge-mezza', icon:'½' },
-  mattina:         { nome:'Mattina',         ora:'8:00 – 16:00', badge:'badge-mattina', icon:'☀' },
-  pomeriggio:      { nome:'Pomeriggio',      ora:'16:00 – 22:00', badge:'badge-pomeriggio', icon:'☾' },
-  riposo:          { nome:'Riposo',          ora:'—', badge:'badge-mezza', icon:'—' }
+  giornata_intera: { nome:'GIORNATA INTERA', badge:'badge-intera', icon:'●' },
+  mezza_giornata:  { nome:'MEZZA GIORNATA',  badge:'badge-mezza', icon:'◐' },
+  mattina:         { nome:'MATTINA',         badge:'badge-mattina', icon:'▲' },
+  pomeriggio:      { nome:'POMERIGGIO',      badge:'badge-pomeriggio', icon:'▼' },
+  riposo:          { nome:'RIPOSO',          badge:'badge-mezza', icon:'–' }
 };
 const GIORNI = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
 
@@ -245,24 +247,49 @@ function roleForWeek(key, monday){
   return ((base + offset) % 3 + 3) % 3;
 }
 
-// turno di base (senza override) per una CHIAVE di gruppo (toto/davide/francesco/mimmo/vito)
+// Francesco non può MAI fare la mezza giornata di lunedì (impegni di laboratorio).
+// Quando il pattern gli assegna il lunedì (ruolo A), scambia automaticamente
+// lunedì↔martedì con chi quella settimana ha il ruolo B (martedì+venerdì).
+function autoSwapInfo(monday){
+  const roles = {};
+  GRUPPO_ROTAZIONE_KEYS.forEach(k => { roles[k] = roleForWeek(k, monday); });
+  if (roles['francesco'] !== 0) return null; // Francesco non ha ruolo A questa settimana: nessuno scambio
+  const roleBKey = GRUPPO_ROTAZIONE_KEYS.find(k => roles[k] === 1);
+  return { mondayKey: 'francesco', tuesdayKey: roleBKey };
+}
+
+// turno di base (senza override manuali) per una CHIAVE di gruppo (toto/davide/francesco/mimmo/vito)
+// ritorna { tipo, auto } dove auto=true se il turno di quel giorno è frutto dello scambio automatico del lunedì
 function baseShiftForKey(key, date){
   const weekday = date.getDay();
   if (weekday === 0) return null; // chiuso
   if (GRUPPO_ROTAZIONE_KEYS.includes(key)){
-    if (weekday === 6) return 'giornata_intera';
+    if (weekday === 6) return { tipo:'giornata_intera', auto:false };
     const monday = getMondayOf(date);
     const role = roleForWeek(key, monday);
-    return ROLE_DAYS[role].includes(weekday) ? 'mezza_giornata' : 'giornata_intera';
+    const swap = autoSwapInfo(monday);
+
+    if (swap && weekday === 1){ // lunedì
+      if (key === swap.mondayKey) return { tipo:'giornata_intera', auto:true };
+      if (key === swap.tuesdayKey) return { tipo:'mezza_giornata', auto:true };
+    }
+    if (swap && weekday === 2){ // martedì
+      if (key === swap.mondayKey) return { tipo:'mezza_giornata', auto:true };
+      if (key === swap.tuesdayKey) return { tipo:'giornata_intera', auto:true };
+    }
+
+    const tipo = ROLE_DAYS[role].includes(weekday) ? 'mezza_giornata' : 'giornata_intera';
+    return { tipo, auto:false };
   }
-  if (key === 'mimmo') return 'mattina';
-  if (key === 'vito') return 'pomeriggio';
+  if (key === 'mimmo') return { tipo:'mattina', auto:false };
+  if (key === 'vito') return { tipo:'pomeriggio', auto:false };
   return null;
 }
 
+// ritorna { tipo, auto } effettivo, considerando eventuali override manuali salvati su supabase
 function effectiveShiftFor(addettoId, key, date){
   const k = fmtISO(date) + '_' + addettoId;
-  if (overridesCache[k]) return overridesCache[k];
+  if (overridesCache[k]) return { tipo: overridesCache[k], auto:false };
   return baseShiftForKey(key, date);
 }
 
@@ -425,17 +452,19 @@ function renderWeek(){
       bodyHtml = `<div class="day-closed">Chiuso</div>`;
     } else {
       scheduled.forEach(a=>{
-        const shift = effectiveShiftFor(a.id, a._key, date);
-        if (!shift || shift === 'riposo') return;
+        const result = effectiveShiftFor(a.id, a._key, date);
+        if (!result || result.tipo === 'riposo') return;
+        const shift = result.tipo;
         const info = SHIFT_LABELS[shift];
         const isMine = currentUser.id === a.id;
         const canSwap = isMine && currentUser.ruolo !== 'admin';
         bodyHtml += `
-          <div class="shift-row">
+          <div class="shift-row${result.auto ? ' auto-swap' : ''}">
             <div class="shift-badge ${info.badge}">${info.icon}</div>
             <div class="shift-info">
               <div class="shift-name">${a.nome}${isMine ? ' (tu)' : ''}</div>
-              <div class="shift-time">${info.nome} · ${info.ora}</div>
+              <div class="shift-time">${info.nome}</div>
+              ${result.auto ? `<div class="auto-swap-tag">⇄ Scambio automatico (lab. lunedì)</div>` : ''}
             </div>
             ${canSwap ? `<button class="swap-btn" onclick="openSwapModal(${a.id},'${a._key}','${iso}','${shift}')">Scambia</button>` : ''}
           </div>`;
@@ -551,8 +580,8 @@ async function handleSwapDecision(reqId, decision){
     const shiftRichiedente = effectiveShiftFor(req.richiedente_id, keyRich, new Date(date+'T00:00:00'));
     const shiftDestinatario = effectiveShiftFor(req.destinatario_id, keyDest, new Date(date+'T00:00:00'));
     await sb.from('turni_override').upsert([
-      { data: date, addetto_id: req.richiedente_id, tipo_turno: shiftDestinatario, motivo:'scambio approvato', creato_da: currentUser.id },
-      { data: date, addetto_id: req.destinatario_id, tipo_turno: shiftRichiedente, motivo:'scambio approvato', creato_da: currentUser.id }
+      { data: date, addetto_id: req.richiedente_id, tipo_turno: shiftDestinatario.tipo, motivo:'scambio approvato', creato_da: currentUser.id },
+      { data: date, addetto_id: req.destinatario_id, tipo_turno: shiftRichiedente.tipo, motivo:'scambio approvato', creato_da: currentUser.id }
     ], { onConflict: 'data,addetto_id' });
   }
 
