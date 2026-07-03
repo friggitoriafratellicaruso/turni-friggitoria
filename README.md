@@ -53,5 +53,18 @@ Altri eventuali addetti (es. un cassiere extra non coinvolto nei turni) restano 
 ## Modifiche manuali (ferie, malattie, ecc.)
 Tab "Admin": forza un turno diverso dal pattern per una data specifica, senza toccare la rotazione automatica.
 
+## Come funziona il flusso di scambio (3 fasi)
+
+1. **Il dipendente A propone uno scambio** → si apre WhatsApp verso il collega B con un messaggio generico e il link all'app. Stato richiesta: "In attesa del collega".
+2. **B apre l'app, accetta o rifiuta**:
+   - Se rifiuta → richiesta chiusa, A riceve un WhatsApp con l'esito.
+   - Se accetta → la richiesta NON è ancora valida: passa in stato "In attesa del titolare". A e B ricevono entrambi un WhatsApp che li avvisa dell'attesa, e tu (admin) ricevi un WhatsApp con il link per approvare.
+3. **Tu approvi o rifiuti dall'app** → solo a questo punto lo scambio diventa effettivo nel calendario. A e B ricevono l'esito finale via WhatsApp.
+
+L'ultima parola è sempre tua: l'accordo tra dipendenti al passo 2 è solo una proposta, non modifica il calendario finché non approvi.
+
+## Numeri WhatsApp dei dipendenti
+Sono impostati direttamente nel codice (`PHONE_NUMBERS` in `index.html`) invece che nel database, così restano fissi anche se aggiorni il file da GitHub. Per cambiarli, modifica quella costante.
+
 ## Nota sulle notifiche WhatsApp
-Senza WhatsApp Business API, l'app apre link `wa.me` precompilati: basta premere invia, non è invio automatico in background.
+Senza WhatsApp Business API, l'app apre link `wa.me` precompilati: basta premere invia, non è invio automatico in background. Ogni fase del flusso può aprire più schede WhatsApp in sequenza (una per destinatario) — il browser potrebbe chiedere il permesso di aprire popup multipli la prima volta.

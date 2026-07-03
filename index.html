@@ -208,6 +208,17 @@ function groupKeyFor(nome){
 const ANCHOR_MONDAY = new Date('2026-06-29T00:00:00');
 const ANCHOR_ROLES = { toto: 2, davide: 0, francesco: 1 }; // C, A, B
 const ROLE_DAYS = { 0: [1, 4], 1: [2, 5], 2: [3] };
+const APP_URL = 'https://friggitoriafratellicaruso.github.io/turni-friggitoria/';
+
+// Numeri WhatsApp dei dipendenti (formato internazionale, senza +)
+const PHONE_NUMBERS = {
+  toto: '393714729659',
+  davide: '393295815032',
+  francesco: '393792287452',
+  mimmo: '393204740327',
+  vito: '393669771747'
+};
+
 const GRUPPO_ROTAZIONE_KEYS = ['toto', 'davide', 'francesco'];
 const GRUPPO_FISSO_KEYS = { mimmo: 'mattina', vito: 'pomeriggio' };
 
@@ -490,7 +501,7 @@ function openSwapModal(addettoId, key, dateISO, shift){
   const d = new Date(dateISO + 'T00:00:00');
   document.getElementById('swap-modal-body').innerHTML =
     `<p style="font-size:13.5px; color:var(--char-soft); margin-top:0">
-      Turno: <strong>${info.nome}</strong> (${info.ora})<br>${GIORNI[d.getDay()]} ${fmtLabel(d)}
+      Turno: <strong>${info.nome}</strong><br>${GIORNI[d.getDay()]} ${fmtLabel(d)}
     </p>`;
   const select = document.getElementById('swap-partner');
   select.innerHTML = '';
@@ -507,30 +518,39 @@ document.getElementById('swap-cancel').onclick = ()=> document.getElementById('s
 document.getElementById('swap-confirm').onclick = async ()=>{
   if (!pendingSwap) return;
   const partnerId = parseInt(document.getElementById('swap-partner').value, 10);
+  const partnerKey = groupKeyFor(nomeById(partnerId));
   const { error } = await sb.from('richieste_scambio').insert({
     data_turno: pendingSwap.dateISO,
     richiedente_id: pendingSwap.addettoId,
     destinatario_id: partnerId,
-    stato: 'pending'
+    stato: 'attesa_destinatario'
   });
   document.getElementById('swap-modal').classList.remove('open');
   if (error){ showToast('Errore: ' + error.message); return; }
 
   showToast('Richiesta inviata. Apro WhatsApp…');
   const d = new Date(pendingSwap.dateISO + 'T00:00:00');
-  const nomeRichiedente = allAddetti.find(a=>a.id===pendingSwap.addettoId)?.nome || '';
-  const nomePartner = allAddetti.find(a=>a.id===partnerId)?.nome || '';
-  const msg = `🔄 Nuova richiesta di scambio turno\n\n${nomeRichiedente} vuole scambiare il turno di ${GIORNI[d.getDay()]} ${fmtLabel(d)} (${SHIFT_LABELS[pendingSwap.shift].nome}) con ${nomePartner}.\n\nApri l'app per approvare o rifiutare.`;
-  window.open(`https://wa.me/${ADMIN_WHATSAPP}?text=${encodeURIComponent(msg)}`, '_blank');
+  const nomeRichiedente = nomeById(pendingSwap.addettoId);
+  const msg = `🔄 Hai ricevuto una richiesta di scambio turno da ${nomeRichiedente} per ${GIORNI[d.getDay()]} ${fmtLabel(d)} (${SHIFT_LABELS[pendingSwap.shift].nome}).\n\nVai sulla pagina per accettare o rifiutare:\n${APP_URL}`;
+  const partnerPhone = PHONE_NUMBERS[partnerKey];
+  window.open(`https://wa.me/${partnerPhone || ''}?text=${encodeURIComponent(msg)}`, '_blank');
 
   await refreshRequests();
   renderScambi();
 };
 
 /* =====================================================
-   TAB SCAMBI
+   TAB SCAMBI — 3 fasi: destinatario accetta/rifiuta -> admin approva/rifiuta
    ===================================================== */
 function nomeById(id){ return allAddetti.find(a=>a.id===id)?.nome || '—'; }
+function phoneForId(id){ return PHONE_NUMBERS[groupKeyFor(nomeById(id))] || ''; }
+
+const STATO_LABELS = {
+  attesa_destinatario: { label:'In attesa del collega', cls:'status-pending' },
+  attesa_admin:        { label:'In attesa del titolare', cls:'status-pending' },
+  approvato:            { label:'Approvato', cls:'status-approvato' },
+  rifiutato:            { label:'Rifiutato', cls:'status-rifiutato' }
+};
 
 function renderScambi(){
   const container = document.getElementById('scambi-container');
@@ -544,19 +564,26 @@ function renderScambi(){
 
   container.innerHTML = mine.map(r=>{
     const d = new Date(r.data_turno + 'T00:00:00');
-    const statusClass = 'status-' + r.stato;
-    const statusLabel = r.stato === 'pending' ? 'In attesa' : (r.stato === 'approvato' ? 'Approvato' : 'Rifiutato');
-    const actions = (isAdmin && r.stato === 'pending')
-      ? `<div class="req-actions">
-          <button class="btn-approve" onclick="handleSwapDecision(${r.id}, 'approvato')">Approva</button>
-          <button class="btn-reject" onclick="handleSwapDecision(${r.id}, 'rifiutato')">Rifiuta</button>
-        </div>`
-      : '';
+    const st = STATO_LABELS[r.stato] || { label:r.stato, cls:'status-pending' };
+
+    let actions = '';
+    if (!isAdmin && r.stato === 'attesa_destinatario' && r.destinatario_id === currentUser.id){
+      actions = `<div class="req-actions">
+          <button class="btn-approve" onclick="handleDestinatarioDecision(${r.id}, true)">Accetta</button>
+          <button class="btn-reject" onclick="handleDestinatarioDecision(${r.id}, false)">Rifiuta</button>
+        </div>`;
+    } else if (isAdmin && r.stato === 'attesa_admin'){
+      actions = `<div class="req-actions">
+          <button class="btn-approve" onclick="handleAdminDecision(${r.id}, 'approvato')">Approva</button>
+          <button class="btn-reject" onclick="handleAdminDecision(${r.id}, 'rifiutato')">Rifiuta</button>
+        </div>`;
+    }
+
     return `
       <div class="req-card">
         <div class="req-top">
           <strong style="font-size:13.5px">${GIORNI[d.getDay()]} ${fmtLabel(d)}</strong>
-          <span class="req-status ${statusClass}">${statusLabel}</span>
+          <span class="req-status ${st.cls}">${st.label}</span>
         </div>
         <div class="req-detail">${nomeById(r.richiedente_id)} ↔ ${nomeById(r.destinatario_id)}</div>
         ${actions}
@@ -564,7 +591,47 @@ function renderScambi(){
   }).join('');
 }
 
-async function handleSwapDecision(reqId, decision){
+// Il collega (destinatario) accetta o rifiuta la proposta — non è ancora la decisione finale
+async function handleDestinatarioDecision(reqId, accept){
+  const req = requestsCache.find(r=>r.id === reqId);
+  if (!req) return;
+
+  if (!accept){
+    const { error } = await sb.from('richieste_scambio').update({
+      stato: 'rifiutato', gestito_da: currentUser.id, gestito_il: new Date().toISOString(), note:'rifiutato dal collega'
+    }).eq('id', reqId);
+    if (error){ showToast('Errore: ' + error.message); return; }
+    showToast('Richiesta rifiutata.');
+    const d = new Date(req.data_turno + 'T00:00:00');
+    const msg = `❌ ${nomeById(req.destinatario_id)} ha rifiutato la richiesta di scambio del ${GIORNI[d.getDay()]} ${fmtLabel(d)}.`;
+    window.open(`https://wa.me/${phoneForId(req.richiedente_id)}?text=${encodeURIComponent(msg)}`, '_blank');
+    await refreshRequests();
+    renderScambi();
+    return;
+  }
+
+  const { error } = await sb.from('richieste_scambio').update({
+    stato: 'attesa_admin', gestito_il: new Date().toISOString()
+  }).eq('id', reqId);
+  if (error){ showToast('Errore: ' + error.message); return; }
+
+  showToast('Accettato. In attesa del titolare. Apro WhatsApp…');
+  const d = new Date(req.data_turno + 'T00:00:00');
+  const dataStr = `${GIORNI[d.getDay()]} ${fmtLabel(d)}`;
+
+  const msgDip = `⏳ Richiesta in sospeso, in attesa dell'approvazione del titolare.\n\n${nomeById(req.richiedente_id)} ↔ ${nomeById(req.destinatario_id)}\n${dataStr}`;
+  window.open(`https://wa.me/${phoneForId(req.richiedente_id)}?text=${encodeURIComponent(msgDip)}`, '_blank');
+  window.open(`https://wa.me/${phoneForId(req.destinatario_id)}?text=${encodeURIComponent(msgDip)}`, '_blank');
+
+  const msgAdmin = `📋 I tuoi dipendenti hanno concordato uno scambio turno, in attesa della tua approvazione.\n\n${nomeById(req.richiedente_id)} ↔ ${nomeById(req.destinatario_id)}\n${dataStr}\n\nApri per approvare:\n${APP_URL}`;
+  window.open(`https://wa.me/${ADMIN_WHATSAPP}?text=${encodeURIComponent(msgAdmin)}`, '_blank');
+
+  await refreshRequests();
+  renderScambi();
+}
+
+// Decisione finale dell'admin
+async function handleAdminDecision(reqId, decision){
   const req = requestsCache.find(r=>r.id === reqId);
   if (!req) return;
 
@@ -586,10 +653,11 @@ async function handleSwapDecision(reqId, decision){
   }
 
   const d = new Date(req.data_turno + 'T00:00:00');
-  const esito = decision === 'approvato' ? '✅ Scambio approvato' : '❌ Scambio rifiutato';
+  const esito = decision === 'approvato' ? '✅ Scambio approvato dal titolare' : '❌ Scambio rifiutato dal titolare';
   const msg = `${esito}\n\n${nomeById(req.richiedente_id)} ↔ ${nomeById(req.destinatario_id)}\n${GIORNI[d.getDay()]} ${fmtLabel(d)}`;
   showToast('Fatto. Apro WhatsApp…');
-  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+  window.open(`https://wa.me/${phoneForId(req.richiedente_id)}?text=${encodeURIComponent(msg)}`, '_blank');
+  window.open(`https://wa.me/${phoneForId(req.destinatario_id)}?text=${encodeURIComponent(msg)}`, '_blank');
 
   await refreshOverrides();
   await refreshRequests();
@@ -607,6 +675,7 @@ function renderAdmin(){
     <p style="font-size:13px; color:var(--char-soft); margin-top:-8px">Usa questo pannello per eccezioni: ferie, malattie, cambi non richiesti dai dipendenti.</p>
     <label class="form-label">Dipendente</label>
     <select class="form-select" id="admin-dip"></select>
+
     <label class="form-label">Data</label>
     <input type="date" class="form-input" id="admin-date">
     <label class="form-label">Turno</label>
