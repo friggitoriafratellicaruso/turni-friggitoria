@@ -491,8 +491,8 @@ function renderWeek(){
         .sort((x, y) => (SHIFT_ORDER[x.result.tipo] ?? 9) - (SHIFT_ORDER[y.result.tipo] ?? 9));
 
       const seraShifts = withShifts.filter(x => x.result.tipo === 'giornata_intera' || x.result.tipo === 'pomeriggio');
-      banconistiSera = seraShifts.filter(x => x.a.ruolo === 'Banconista').length;
-      laboratorioSera = seraShifts.filter(x => x.a.ruolo !== 'Banconista').length;
+      banconistiSera = seraShifts.filter(x => x.a._key !== 'francesco').length;
+      laboratorioSera = seraShifts.filter(x => x.a._key === 'francesco').length;
 
       withShifts.forEach(({ a, result })=>{
         const shift = result.tipo;
