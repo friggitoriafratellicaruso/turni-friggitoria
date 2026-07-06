@@ -231,6 +231,10 @@ const SHIFT_LABELS = {
   pomeriggio:      { nome:'POMERIGGIO',      badge:'badge-pomeriggio', icon:'▼' },
   riposo:          { nome:'RIPOSO',          badge:'badge-mezza', icon:'–' }
 };
+
+// Ordine di visualizzazione nella lista turni giornalieri:
+// mezza giornata prima, poi Mimmo (mattina), poi giornata intera, poi Vito (pomeriggio)
+const SHIFT_ORDER = { mezza_giornata: 0, mattina: 1, giornata_intera: 2, pomeriggio: 3, riposo: 4 };
 const GIORNI = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
 
 let currentUser = null;       // record da tabella addetti: {id, nome, ruolo, pin, attivo}
@@ -473,9 +477,12 @@ function renderWeek(){
     if (weekday === 0){
       bodyHtml = `<div class="day-closed">Chiuso</div>`;
     } else {
-      scheduled.forEach(a=>{
-        const result = effectiveShiftFor(a.id, a._key, date);
-        if (!result || result.tipo === 'riposo') return;
+      const withShifts = scheduled
+        .map(a => ({ a, result: effectiveShiftFor(a.id, a._key, date) }))
+        .filter(x => x.result && x.result.tipo !== 'riposo')
+        .sort((x, y) => (SHIFT_ORDER[x.result.tipo] ?? 9) - (SHIFT_ORDER[y.result.tipo] ?? 9));
+
+      withShifts.forEach(({ a, result })=>{
         const shift = result.tipo;
         const info = SHIFT_LABELS[shift];
         const isMine = currentUser.id === a.id;
@@ -731,16 +738,25 @@ async function handleAdminDecision(reqId, decision){
 }
 
 /* =====================================================
-   TAB ADMIN — modifica manuale turni
+   TAB ADMIN — modifica manuale turni, scambio rapido, gestione PIN
    ===================================================== */
 function renderAdmin(){
   const container = document.getElementById('admin-container');
   container.innerHTML = `
-    <h3 style="margin-top:0">Modifica turno manuale</h3>
-    <p style="font-size:13px; color:var(--char-soft); margin-top:-8px">Usa questo pannello per eccezioni: ferie, malattie, cambi non richiesti dai dipendenti.</p>
+    <h3 style="margin-top:0">Scambio rapido tra due dipendenti</h3>
+    <p style="font-size:13px; color:var(--char-soft); margin-top:-8px">Scambia i turni di due dipendenti in una data, senza passare dalla richiesta di scambio e senza inviare notifiche WhatsApp.</p>
+    <label class="form-label">Primo dipendente</label>
+    <select class="form-select" id="quick-dip-a"></select>
+    <label class="form-label">Secondo dipendente</label>
+    <select class="form-select" id="quick-dip-b"></select>
+    <label class="form-label">Data</label>
+    <input type="date" class="form-input" id="quick-date">
+    <button class="btn-primary" style="width:100%; padding:13px; border-radius:10px; border:none;" onclick="quickSwap()">Scambia turni</button>
+
+    <h3 style="margin-top:28px">Modifica turno manuale</h3>
+    <p style="font-size:13px; color:var(--char-soft); margin-top:-8px">Per eccezioni singole: ferie, malattie, ecc. Nessuna notifica WhatsApp viene inviata.</p>
     <label class="form-label">Dipendente</label>
     <select class="form-select" id="admin-dip"></select>
-
     <label class="form-label">Data</label>
     <input type="date" class="form-input" id="admin-date">
     <label class="form-label">Turno</label>
@@ -752,12 +768,24 @@ function renderAdmin(){
       <option value="riposo">Riposo</option>
     </select>
     <button class="btn-primary" style="width:100%; padding:13px; border-radius:10px; border:none;" onclick="saveOverride()">Salva modifica</button>
+
+    <h3 style="margin-top:28px">Gestione PIN di accesso</h3>
+    <p style="font-size:13px; color:var(--char-soft); margin-top:-8px">Modifica il PIN di accesso di ciascun addetto.</p>
+    <div id="pin-list"></div>
   `;
+
   const sel = document.getElementById('admin-dip');
+  const selA = document.getElementById('quick-dip-a');
+  const selB = document.getElementById('quick-dip-b');
   scheduledAddetti().forEach(a=>{
-    const opt = document.createElement('option'); opt.value=a.id; opt.textContent=a.nome; sel.appendChild(opt);
+    [sel, selA, selB].forEach(s=>{
+      const opt = document.createElement('option'); opt.value=a.id; opt.textContent=a.nome; s.appendChild(opt);
+    });
   });
   document.getElementById('admin-date').value = fmtISO(new Date());
+  document.getElementById('quick-date').value = fmtISO(new Date());
+
+  renderPinList();
 }
 
 async function saveOverride(){
@@ -772,6 +800,58 @@ async function saveOverride(){
   showToast('Turno aggiornato.');
   await refreshOverrides();
   renderWeek();
+}
+
+// Scambio rapido admin: scambia i turni effettivi di due dipendenti in una data, senza notifiche WhatsApp
+async function quickSwap(){
+  const idA = parseInt(document.getElementById('quick-dip-a').value, 10);
+  const idB = parseInt(document.getElementById('quick-dip-b').value, 10);
+  const date = document.getElementById('quick-date').value;
+  if (!date){ showToast('Seleziona una data.'); return; }
+  if (idA === idB){ showToast('Seleziona due dipendenti diversi.'); return; }
+
+  const aRecord = scheduledAddetti().find(a => a.id === idA);
+  const bRecord = scheduledAddetti().find(a => a.id === idB);
+  if (!aRecord || !bRecord){ showToast('Dipendente non trovato.'); return; }
+
+  const dateObj = new Date(date + 'T00:00:00');
+  const shiftA = effectiveShiftFor(idA, aRecord._key, dateObj);
+  const shiftB = effectiveShiftFor(idB, bRecord._key, dateObj);
+  if (!shiftA || !shiftB){ showToast('Uno dei due dipendenti non ha un turno in questa data.'); return; }
+
+  const { error } = await sb.from('turni_override').upsert([
+    { data: date, addetto_id: idA, tipo_turno: shiftB.tipo, motivo: 'scambio rapido admin', creato_da: currentUser.id },
+    { data: date, addetto_id: idB, tipo_turno: shiftA.tipo, motivo: 'scambio rapido admin', creato_da: currentUser.id }
+  ], { onConflict: 'data,addetto_id' });
+  if (error){ showToast('Errore: ' + error.message); return; }
+
+  showToast(`Scambiati i turni di ${aRecord.nome} e ${bRecord.nome}.`);
+  await refreshOverrides();
+  renderWeek();
+}
+
+// ── Gestione PIN ──
+function renderPinList(){
+  const list = document.getElementById('pin-list');
+  if (!list) return;
+  list.innerHTML = allAddetti.map(a => `
+    <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
+      <div style="flex:1; font-size:13.5px; font-weight:600;">${a.nome}</div>
+      <input type="text" class="form-input" style="margin-bottom:0; width:110px;" id="pin-input-${a.id}" value="${a.pin}" inputmode="numeric" maxlength="8">
+      <button class="swap-btn" onclick="savePin(${a.id})">Salva</button>
+    </div>
+  `).join('');
+}
+
+async function savePin(addettoId){
+  const input = document.getElementById(`pin-input-${addettoId}`);
+  const newPin = input.value.trim();
+  if (!newPin){ showToast('Inserisci un PIN valido.'); return; }
+  const { error } = await sb.from('addetti').update({ pin: newPin }).eq('id', addettoId);
+  if (error){ showToast('Errore: ' + error.message); return; }
+  const record = allAddetti.find(a => a.id === addettoId);
+  if (record) record.pin = newPin;
+  showToast('PIN aggiornato.');
 }
 
 /* =====================================================
