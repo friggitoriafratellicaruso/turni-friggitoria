@@ -69,3 +69,4 @@ Sono impostati direttamente nel codice (`PHONE_NUMBERS` in `index.html`) invece 
 ## Nota sulle notifiche WhatsApp
 Senza WhatsApp Business API, l'app apre link `wa.me` precompilati: basta premere invia, non è invio automatico in background. Ogni fase del flusso può aprire più schede WhatsApp in sequenza (una per destinatario) — il browser potrebbe chiedere il permesso di aprire popup multipli la prima volta.
 
+
