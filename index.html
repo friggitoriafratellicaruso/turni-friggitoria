@@ -490,7 +490,7 @@ function renderWeek(){
         .sort((x, y) => (SHIFT_ORDER[x.result.tipo] ?? 9) - (SHIFT_ORDER[y.result.tipo] ?? 9));
 
       banconistiSera = withShifts.filter(x =>
-        x.a.ruolo === 'Banconista' && (x.result.tipo === 'giornata_intera' || x.result.tipo === 'pomeriggio')
+        x.result.tipo === 'giornata_intera' || x.result.tipo === 'pomeriggio'
       ).length;
 
       withShifts.forEach(({ a, result })=>{
@@ -517,7 +517,7 @@ function renderWeek(){
       <div class="day-head">
         <span class="dname">${GIORNI[weekday]}</span>
         <span class="day-head-right">
-          ${weekday !== 0 ? `<span class="banconisti-badge">🍺 ${banconistiSera} sera</span>` : ''}
+          ${weekday !== 0 ? `<span class="banconisti-badge">🍺 ${banconistiSera} presenti sera</span>` : ''}
           <span class="ddate">${fmtLabel(date)}</span>
         </span>
       </div>
