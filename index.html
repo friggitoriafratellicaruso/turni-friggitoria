@@ -103,6 +103,18 @@
   .btn-reject{background:var(--tomato); color:#fff;}
   .empty-state{text-align:center; padding:40px 20px; color:var(--char-soft); font-size:13.5px;}
 
+  .stats-grid-labels{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-top:16px;
+    font-size:11px; font-weight:700; color:var(--char-soft); text-align:center; }
+  .stats-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-top:6px; }
+  .stats-cell{ aspect-ratio:1; border-radius:10px; background:var(--paper); border:1.5px solid var(--line);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; }
+  .stats-cell.empty{ background:transparent; border:none; }
+  .stats-cell.closed{ color:var(--char-soft); font-size:11px; opacity:0.4; }
+  .stats-cell .sc-day{ font-size:11px; color:var(--char-soft); }
+  .stats-cell .sc-count{ font-size:15px; font-weight:700; }
+  .stats-cell.highlight{ background:#FBE9D6; border-color:var(--gold-deep); }
+  .stats-cell.highlight .sc-count{ color:var(--gold-deep); }
+
   .modal-overlay{ position:fixed; inset:0; background:rgba(43,33,27,0.45); display:none;
     align-items:flex-end; justify-content:center; z-index:50; }
   .modal-overlay.open{display:flex;}
@@ -147,6 +159,7 @@
     <div class="tab active" data-tab="settimana">Settimana</div>
     <div class="tab" data-tab="scambi">Scambi</div>
     <div class="tab" data-tab="admin" id="tab-admin-btn" style="display:none">Admin</div>
+    <div class="tab" data-tab="stats" id="tab-stats-btn" style="display:none">Statistiche</div>
   </div>
   <div id="scroll-area">
     <div id="tab-settimana" class="tab-content active">
@@ -162,6 +175,9 @@
     </div>
     <div id="tab-admin" class="tab-content">
       <div id="admin-container"></div>
+    </div>
+    <div id="tab-stats" class="tab-content">
+      <div id="stats-container"></div>
     </div>
   </div>
 </div>
@@ -421,12 +437,13 @@ async function enterApp(){
   document.getElementById('header-title').textContent = 'Ciao ' + currentUser.nome;
   document.getElementById('header-role').textContent = currentUser.ruolo === 'admin' ? 'Amministratore' : currentUser.ruolo;
   document.getElementById('tab-admin-btn').style.display = currentUser.ruolo === 'admin' ? 'block' : 'none';
+  document.getElementById('tab-stats-btn').style.display = currentUser.ruolo === 'admin' ? 'block' : 'none';
 
   await refreshOverrides();
   await refreshRequests();
   renderWeek();
   renderScambi();
-  if (currentUser.ruolo === 'admin') renderAdmin();
+  if (currentUser.ruolo === 'admin') { renderAdmin(); renderStats(); }
 }
 
 document.querySelectorAll('.tab').forEach(tab=>{
@@ -872,6 +889,96 @@ async function savePin(addettoId){
   const record = allAddetti.find(a => a.id === addettoId);
   if (record) record.pin = newPin;
   showToast('PIN aggiornato.');
+}
+
+/* =====================================================
+   TAB STATISTICHE (solo admin) — vista a calendario: evidenzia i giorni con 4+ banconisti la sera
+   ===================================================== */
+let statsMonth = (() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; })();
+const SOGLIA_BANCONISTI = 4;
+
+function changeStatsMonth(delta){
+  statsMonth = new Date(statsMonth.getFullYear(), statsMonth.getMonth() + delta, 1);
+  renderStats();
+}
+
+// conta banconisti/laboratorio la sera per una data, usando una mappa di override locale (mese selezionato)
+function seraCountsForDate(date, overrideMapLocal){
+  let banconisti = 0, laboratorio = 0;
+  scheduledAddetti().forEach(a=>{
+    const key = fmtISO(date) + '_' + a.id;
+    const tipo = overrideMapLocal[key] || baseShiftForKey(a._key, date);
+    if (tipo === 'giornata_intera' || tipo === 'pomeriggio'){
+      if (a._key === 'francesco') laboratorio++; else banconisti++;
+    }
+  });
+  return { banconisti, laboratorio };
+}
+
+async function renderStats(){
+  const container = document.getElementById('stats-container');
+  if (!container) return;
+  container.innerHTML = `<div class="empty-state">Calcolo in corso…</div>`;
+
+  const year = statsMonth.getFullYear();
+  const month = statsMonth.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const fromISO = fmtISO(firstDay);
+  const toISO = fmtISO(lastDay);
+
+  const { data: overridesData, error } = await sb.from('turni_override')
+    .select('data,addetto_id,tipo_turno').gte('data', fromISO).lte('data', toISO);
+  const overrideMapLocal = {};
+  if (!error && overridesData){
+    overridesData.forEach(o => { overrideMapLocal[o.data + '_' + o.addetto_id] = o.tipo_turno; });
+  }
+
+  // Costruisco le celle: vuote prima del 1° (a seconda del giorno della settimana) + un giorno per data del mese
+  const cells = [];
+  const firstWeekday = firstDay.getDay(); // 0=dom..6=sab
+  const leadingBlanks = firstWeekday === 0 ? 6 : firstWeekday - 1; // la settimana inizia di lunedì
+  for (let i=0;i<leadingBlanks;i++) cells.push(null);
+
+  let giorniEvidenziati = 0;
+  for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate()+1)){
+    const weekday = d.getDay();
+    if (weekday === 0){
+      cells.push({ closed:true, dayNum: d.getDate() });
+      continue;
+    }
+    const { banconisti } = seraCountsForDate(d, overrideMapLocal);
+    const highlight = banconisti >= SOGLIA_BANCONISTI;
+    if (highlight) giorniEvidenziati++;
+    cells.push({ dayNum: d.getDate(), banconisti, highlight });
+  }
+
+  const monthLabel = firstDay.toLocaleDateString('it-IT', { month:'long', year:'numeric' });
+
+  container.innerHTML = `
+    <div class="week-nav">
+      <button onclick="changeStatsMonth(-1)">‹</button>
+      <div class="week-label" style="text-transform:capitalize">${monthLabel}</div>
+      <button onclick="changeStatsMonth(1)">›</button>
+    </div>
+    <p style="font-size:13px; color:var(--char-soft); margin-top:-6px">
+      Giorni evidenziati in arancio: <strong>${SOGLIA_BANCONISTI} o più</strong> banconisti presenti la sera (giornata intera + pomeriggio). Trovati questo mese: <strong>${giorniEvidenziati}</strong>.
+    </p>
+    <div class="stats-grid-labels">
+      ${['L','M','M','G','V','S','D'].map(l=>`<div>${l}</div>`).join('')}
+    </div>
+    <div class="stats-grid">
+      ${cells.map(c=>{
+        if (c === null) return `<div class="stats-cell empty"></div>`;
+        if (c.closed) return `<div class="stats-cell closed">${c.dayNum}</div>`;
+        return `<div class="stats-cell${c.highlight ? ' highlight' : ''}">
+          <span class="sc-day">${c.dayNum}</span>
+          <span class="sc-count">${c.banconisti}</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <p style="font-size:12px; color:var(--char-soft); margin-top:16px;">Il numero nella cella è il totale banconisti di quel giorno la sera. Include ferie/malattie/scambi già registrati.</p>
+  `;
 }
 
 /* =====================================================
