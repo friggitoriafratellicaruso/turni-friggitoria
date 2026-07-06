@@ -69,7 +69,7 @@
   .day-head .dname{font-weight:600; font-size:13.5px;}
   .day-head .ddate{font-size:11.5px; color:var(--char-soft);}
   .day-head-right{display:flex; align-items:center; gap:8px;}
-  .banconisti-badge{font-size:10.5px; font-weight:700; color:var(--gold-deep); background:#FFF1DC; padding:3px 8px; border-radius:20px;}
+  .banconisti-badge{font-size:10.5px; font-weight:700; color:var(--gold-deep); background:#FFF1DC; padding:3px 8px; border-radius:20px; white-space:nowrap;}
   .day-body{padding:10px 14px; display:flex; flex-direction:column; gap:8px;}
   .day-closed{padding:14px; text-align:center; color:var(--char-soft); font-size:13px; font-style:italic;}
   .shift-row{display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:10px; background:rgba(43,33,27,0.03); border:1.5px solid transparent;}
@@ -481,6 +481,7 @@ function renderWeek(){
 
     let bodyHtml = '';
     let banconistiSera = 0;
+    let laboratorioSera = 0;
     if (weekday === 0){
       bodyHtml = `<div class="day-closed">Chiuso</div>`;
     } else {
@@ -489,9 +490,9 @@ function renderWeek(){
         .filter(x => x.result && x.result.tipo !== 'riposo')
         .sort((x, y) => (SHIFT_ORDER[x.result.tipo] ?? 9) - (SHIFT_ORDER[y.result.tipo] ?? 9));
 
-      banconistiSera = withShifts.filter(x =>
-        x.result.tipo === 'giornata_intera' || x.result.tipo === 'pomeriggio'
-      ).length;
+      const seraShifts = withShifts.filter(x => x.result.tipo === 'giornata_intera' || x.result.tipo === 'pomeriggio');
+      banconistiSera = seraShifts.filter(x => x.a.ruolo === 'Banconista').length;
+      laboratorioSera = seraShifts.filter(x => x.a.ruolo !== 'Banconista').length;
 
       withShifts.forEach(({ a, result })=>{
         const shift = result.tipo;
@@ -517,7 +518,7 @@ function renderWeek(){
       <div class="day-head">
         <span class="dname">${GIORNI[weekday]}</span>
         <span class="day-head-right">
-          ${weekday !== 0 ? `<span class="banconisti-badge">🍺 ${banconistiSera} presenti sera</span>` : ''}
+          ${weekday !== 0 ? `<span class="banconisti-badge">🔥 LABORATORIO: ${laboratorioSera} · 🍺 BANCONISTI: ${banconistiSera}</span>` : ''}
           <span class="ddate">${fmtLabel(date)}</span>
         </span>
       </div>
