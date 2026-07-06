@@ -68,6 +68,8 @@
     background:rgba(43,33,27,0.03); border-bottom:1px dashed var(--line); }
   .day-head .dname{font-weight:600; font-size:13.5px;}
   .day-head .ddate{font-size:11.5px; color:var(--char-soft);}
+  .day-head-right{display:flex; align-items:center; gap:8px;}
+  .banconisti-badge{font-size:10.5px; font-weight:700; color:var(--gold-deep); background:#FFF1DC; padding:3px 8px; border-radius:20px;}
   .day-body{padding:10px 14px; display:flex; flex-direction:column; gap:8px;}
   .day-closed{padding:14px; text-align:center; color:var(--char-soft); font-size:13px; font-style:italic;}
   .shift-row{display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:10px; background:rgba(43,33,27,0.03); border:1.5px solid transparent;}
@@ -77,6 +79,9 @@
   .badge-mezza{background:var(--sage);}
   .badge-mattina{background:#5B8FA8;}
   .badge-pomeriggio{background:#8B6BA8;}
+  .badge-assente{background:var(--tomato);}
+  .shift-row.assente{ opacity:0.55; }
+  .shift-row.assente .shift-name{ text-decoration:line-through; }
   .shift-info{flex:1; min-width:0;}
   .shift-name{font-weight:700; font-size:15px; color:var(--char);}
   .shift-time{font-size:12px; font-weight:600; letter-spacing:.3px; color:var(--char-soft); margin-top:1px;}
@@ -229,12 +234,13 @@ const SHIFT_LABELS = {
   mezza_giornata:  { nome:'MEZZA GIORNATA',  badge:'badge-mezza', icon:'◐' },
   mattina:         { nome:'MATTINA',         badge:'badge-mattina', icon:'▲' },
   pomeriggio:      { nome:'POMERIGGIO',      badge:'badge-pomeriggio', icon:'▼' },
-  riposo:          { nome:'RIPOSO',          badge:'badge-mezza', icon:'–' }
+  riposo:          { nome:'RIPOSO',          badge:'badge-mezza', icon:'–' },
+  assente_malattia:{ nome:'ASSENTE (MALATTIA)', badge:'badge-assente', icon:'✕' }
 };
 
 // Ordine di visualizzazione nella lista turni giornalieri:
-// mezza giornata prima, poi Mimmo (mattina), poi giornata intera, poi Vito (pomeriggio)
-const SHIFT_ORDER = { mezza_giornata: 0, mattina: 1, giornata_intera: 2, pomeriggio: 3, riposo: 4 };
+// mezza giornata prima, poi Mimmo (mattina), poi giornata intera, poi Vito (pomeriggio), poi assenze
+const SHIFT_ORDER = { mezza_giornata: 0, mattina: 1, giornata_intera: 2, pomeriggio: 3, riposo: 4, assente_malattia: 5 };
 const GIORNI = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
 
 let currentUser = null;       // record da tabella addetti: {id, nome, ruolo, pin, attivo}
@@ -474,6 +480,7 @@ function renderWeek(){
     ticket.className = 'day-ticket' + (iso === today ? ' today' : '');
 
     let bodyHtml = '';
+    let banconistiSera = 0;
     if (weekday === 0){
       bodyHtml = `<div class="day-closed">Chiuso</div>`;
     } else {
@@ -482,13 +489,18 @@ function renderWeek(){
         .filter(x => x.result && x.result.tipo !== 'riposo')
         .sort((x, y) => (SHIFT_ORDER[x.result.tipo] ?? 9) - (SHIFT_ORDER[y.result.tipo] ?? 9));
 
+      banconistiSera = withShifts.filter(x =>
+        x.a.ruolo === 'Banconista' && (x.result.tipo === 'giornata_intera' || x.result.tipo === 'pomeriggio')
+      ).length;
+
       withShifts.forEach(({ a, result })=>{
         const shift = result.tipo;
         const info = SHIFT_LABELS[shift];
         const isMine = currentUser.id === a.id;
-        const canSwap = isMine && currentUser.ruolo !== 'admin';
+        const isAssente = shift === 'assente_malattia';
+        const canSwap = isMine && currentUser.ruolo !== 'admin' && !isAssente;
         bodyHtml += `
-          <div class="shift-row${result.auto ? ' auto-swap' : ''}">
+          <div class="shift-row${result.auto ? ' auto-swap' : ''}${isAssente ? ' assente' : ''}">
             <div class="shift-badge ${info.badge}">${info.icon}</div>
             <div class="shift-info">
               <div class="shift-name">${a.nome}${isMine ? ' (tu)' : ''}</div>
@@ -502,7 +514,13 @@ function renderWeek(){
     }
 
     ticket.innerHTML = `
-      <div class="day-head"><span class="dname">${GIORNI[weekday]}</span><span class="ddate">${fmtLabel(date)}</span></div>
+      <div class="day-head">
+        <span class="dname">${GIORNI[weekday]}</span>
+        <span class="day-head-right">
+          ${weekday !== 0 ? `<span class="banconisti-badge">🍺 ${banconistiSera} sera</span>` : ''}
+          <span class="ddate">${fmtLabel(date)}</span>
+        </span>
+      </div>
       <div class="day-body">${bodyHtml}</div>`;
     container.appendChild(ticket);
   }
@@ -766,6 +784,7 @@ function renderAdmin(){
       <option value="mattina">Mattina (8–16)</option>
       <option value="pomeriggio">Pomeriggio (16–22)</option>
       <option value="riposo">Riposo</option>
+      <option value="assente_malattia">Assente per malattia</option>
     </select>
     <button class="btn-primary" style="width:100%; padding:13px; border-radius:10px; border:none;" onclick="saveOverride()">Salva modifica</button>
 
