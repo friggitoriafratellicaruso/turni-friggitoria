@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Turni · Friggitoria Fratelli Caruso</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --cream:#FBF3E6; --paper:#FFFDF8; --char:#2B211B; --char-soft:#6b5f54;
+    --gold:#E8A33D; --gold-deep:#C97F1E; --tomato:#C1442E; --sage:#6B8F71;
+    --line: rgba(43,33,27,0.12); --radius: 14px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{ margin:0; background:var(--cream); color:var(--char); font-family:'Inter',sans-serif;
+    display:flex; flex-direction:column; overflow:hidden; -webkit-font-smoothing:antialiased; }
+  h1,h2,h3{font-family:'Fredoka',sans-serif; font-weight:600;}
+  button{font-family:inherit; cursor:pointer;}
+  input{font-family:inherit;}
+
+  #login-screen{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:24px; text-align:center; gap:6px;
+    background: radial-gradient(circle at 20% 15%, rgba(232,163,61,0.18), transparent 40%),
+      radial-gradient(circle at 85% 80%, rgba(193,68,46,0.12), transparent 45%), var(--cream); }
+  .logo-mark{ width:64px; height:64px; border-radius:50%; background:linear-gradient(145deg, var(--gold), var(--gold-deep));
+    display:flex; align-items:center; justify-content:center; font-size:30px; margin-bottom:10px;
+    box-shadow:0 6px 18px rgba(201,127,30,0.35); }
+  #login-screen h1{font-size:22px; margin:0 0 2px;}
+  #login-screen p.sub{color:var(--char-soft); font-size:13.5px; margin:0 0 26px;}
+  .user-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; width:100%; max-width:360px;}
+  .user-chip{ background:var(--paper); border:1.5px solid var(--line); border-radius:var(--radius);
+    padding:14px 6px; font-size:14px; font-weight:600; color:var(--char); transition:all .15s; }
+  .user-chip:active{transform:scale(0.96);}
+  .user-chip.selected{border-color:var(--gold-deep); background:#FFF6E6; box-shadow:0 0 0 3px rgba(232,163,61,0.18);}
+  #pin-area{margin-top:22px; width:100%; max-width:280px; display:none;}
+  #pin-input{ width:100%; padding:14px; border-radius:var(--radius); border:1.5px solid var(--line);
+    text-align:center; font-size:22px; letter-spacing:8px; background:var(--paper); color:var(--char); }
+  #pin-input:focus{outline:none; border-color:var(--gold-deep);}
+  #login-btn{ margin-top:12px; width:100%; padding:14px; border:none; border-radius:var(--radius);
+    background:var(--char); color:var(--cream); font-weight:600; font-size:15px; }
+  #login-error{color:var(--tomato); font-size:13px; margin-top:8px; min-height:16px;}
+
+  #app-screen{flex:1; display:none; flex-direction:column; overflow:hidden;}
+  #header{ display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
+    background:var(--paper); border-bottom:1px solid var(--line); }
+  #header-title{font-size:17px; font-weight:600;}
+  #header-role{font-size:12px; color:var(--char-soft);}
+  #logout-btn{background:none; border:none; color:var(--char-soft); font-size:13px; text-decoration:underline;}
+  #tabs{display:flex; background:var(--paper); border-bottom:1px solid var(--line); padding:0 8px;}
+  .tab{flex:1; text-align:center; padding:12px 4px; font-size:13px; font-weight:600; color:var(--char-soft); border-bottom:2.5px solid transparent;}
+  .tab.active{color:var(--gold-deep); border-bottom-color:var(--gold-deep);}
+  #scroll-area{flex:1; overflow-y:auto; padding:16px; padding-bottom:40px;}
+  .tab-content{display:none;}
+  .tab-content.active{display:block;}
+
+  .week-nav{display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;}
+  .week-nav button{background:var(--paper); border:1.5px solid var(--line); border-radius:10px; width:38px; height:38px; font-size:16px;}
+  .week-label{font-family:'Fredoka',sans-serif; font-weight:600; font-size:15px;}
+  .week-label small{display:block; font-family:'Inter',sans-serif; font-weight:400; color:var(--char-soft); font-size:11.5px;}
+
+  .day-ticket{ background:var(--paper); border-radius:var(--radius); margin-bottom:12px;
+    border:1px solid var(--line); overflow:hidden; position:relative; }
+  .day-ticket.today{border-color:var(--gold-deep); box-shadow:0 0 0 2px rgba(232,163,61,0.15);}
+  .day-head{ display:flex; align-items:center; justify-content:space-between; padding:10px 14px;
+    background:rgba(43,33,27,0.03); border-bottom:1px dashed var(--line); }
+  .day-head .dname{font-weight:600; font-size:13.5px;}
+  .day-head .ddate{font-size:11.5px; color:var(--char-soft);}
+  .day-head-right{display:flex; align-items:center; gap:8px;}
+  .banconisti-badge{font-size:10.5px; font-weight:700; color:var(--gold-deep); background:#FFF1DC; padding:3px 8px; border-radius:20px; white-space:nowrap;}
+  .day-body{padding:10px 14px; display:flex; flex-direction:column; gap:8px;}
+  .day-closed{padding:14px; text-align:center; color:var(--char-soft); font-size:13px; font-style:italic;}
+  .shift-row{display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:10px; background:rgba(43,33,27,0.03); border:1.5px solid transparent;}
+  .shift-badge{ width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-size:19px; font-weight:700; color:#fff; flex-shrink:0; line-height:1; }
+  .badge-intera{background:var(--gold-deep);}
+  .badge-mezza{background:var(--sage);}
+  .badge-mattina{background:#5B8FA8;}
+  .badge-pomeriggio{background:#8B6BA8;}
+  .badge-assente{background:var(--tomato);}
+  .shift-row.assente{ opacity:0.55; }
+  .shift-row.assente .shift-name{ text-decoration:line-through; }
+  .shift-info{flex:1; min-width:0;}
+  .shift-name{font-weight:700; font-size:15px; color:var(--char);}
+  .shift-time{font-size:12px; font-weight:600; letter-spacing:.3px; color:var(--char-soft); margin-top:1px;}
+  .swap-btn{ border:1px solid var(--line); background:var(--paper); border-radius:8px;
+    font-size:11px; padding:6px 9px; color:var(--char); font-weight:600; flex-shrink:0; }
+  .shift-row.auto-swap{ background:#FBE9D6; border-color:var(--tomato); }
+  .auto-swap-tag{ font-size:10.5px; font-weight:700; color:var(--tomato); margin-top:2px; }
+
+  .req-card{ background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); padding:14px; margin-bottom:10px; }
+  .req-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;}
+  .req-status{font-size:11px; font-weight:700; padding:3px 9px; border-radius:20px;}
+  .status-pending{background:#FFF1DC; color:var(--gold-deep);}
+  .status-approvato{background:#E8F1E9; color:var(--sage);}
+  .status-rifiutato{background:#FBE6E2; color:var(--tomato);}
+  .req-detail{font-size:13.5px; line-height:1.5;}
+  .req-actions{display:flex; gap:8px; margin-top:10px;}
+  .req-actions button{flex:1; padding:10px; border-radius:10px; border:none; font-weight:600; font-size:13px;}
+  .btn-approve{background:var(--sage); color:#fff;}
+  .btn-reject{background:var(--tomato); color:#fff;}
+  .empty-state{text-align:center; padding:40px 20px; color:var(--char-soft); font-size:13.5px;}
+
+  .stats-grid-labels{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-top:16px;
+    font-size:11px; font-weight:700; color:var(--char-soft); text-align:center; }
+  .stats-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-top:6px; }
+  .stats-cell{ aspect-ratio:1; border-radius:10px; background:var(--paper); border:1.5px solid var(--line);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; }
+  .stats-cell.empty{ background:transparent; border:none; }
+  .stats-cell.closed{ color:var(--char-soft); font-size:11px; opacity:0.4; }
+  .stats-cell .sc-day{ font-size:11px; color:var(--char-soft); }
+  .stats-cell .sc-count{ font-size:15px; font-weight:700; }
+  .stats-cell.highlight{ background:#FBE9D6; border-color:var(--gold-deep); }
+  .stats-cell.highlight .sc-count{ color:var(--gold-deep); }
+
+  .modal-overlay{ position:fixed; inset:0; background:rgba(43,33,27,0.45); display:none;
+    align-items:flex-end; justify-content:center; z-index:50; }
+  .modal-overlay.open{display:flex;}
+  .modal{ background:var(--cream); width:100%; max-width:480px; border-radius:20px 20px 0 0;
+    padding:20px; max-height:85vh; overflow-y:auto; }
+  .modal h3{margin:0 0 14px;}
+  .form-label{font-size:12.5px; font-weight:600; color:var(--char-soft); margin-bottom:5px; display:block;}
+  .form-select, .form-input{ width:100%; padding:12px; border-radius:10px; border:1.5px solid var(--line);
+    background:var(--paper); font-size:14px; margin-bottom:14px; color:var(--char); }
+  .modal-actions{display:flex; gap:10px; margin-top:4px;}
+  .modal-actions button{flex:1; padding:13px; border-radius:10px; border:none; font-weight:600; font-size:14px;}
+  .btn-primary{background:var(--char); color:var(--cream);}
+  .btn-secondary{background:none; border:1.5px solid var(--line) !important; color:var(--char-soft);}
+
+  .toast{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--char); color:var(--cream);
+    padding:12px 20px; border-radius:30px; font-size:13.5px; z-index:100; display:none; box-shadow:0 8px 24px rgba(0,0,0,0.2); }
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="logo-mark">🍟</div>
+  <h1>Friggitoria Fratelli Caruso</h1>
+  <p class="sub">Gestione turni settimanali</p>
+  <div class="user-grid" id="user-grid"></div>
+  <div id="pin-area">
+    <input type="password" id="pin-input" maxlength="8" inputmode="numeric" placeholder="••••">
+    <button id="login-btn">Entra</button>
+    <div id="login-error"></div>
+  </div>
+</div>
+
+<div id="app-screen">
+  <div id="header">
+    <div>
+      <div id="header-title">Turni</div>
+      <div id="header-role"></div>
+    </div>
+    <button id="logout-btn">Esci</button>
+  </div>
+  <div id="tabs">
+    <div class="tab active" data-tab="settimana">Settimana</div>
+    <div class="tab" data-tab="scambi">Scambi</div>
+    <div class="tab" data-tab="admin" id="tab-admin-btn" style="display:none">Admin</div>
+    <div class="tab" data-tab="stats" id="tab-stats-btn" style="display:none">Statistiche</div>
+  </div>
+  <div id="scroll-area">
+    <div id="tab-settimana" class="tab-content active">
+      <div class="week-nav">
+        <button id="week-prev">‹</button>
+        <div class="week-label" id="week-label"></div>
+        <button id="week-next">›</button>
+      </div>
+      <div id="week-container"></div>
+    </div>
+    <div id="tab-scambi" class="tab-content">
+      <div id="scambi-container"></div>
+    </div>
+    <div id="tab-admin" class="tab-content">
+      <div id="admin-container"></div>
+    </div>
+    <div id="tab-stats" class="tab-content">
+      <div id="stats-container"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="swap-modal">
+  <div class="modal">
+    <h3>Proponi scambio</h3>
+    <div id="swap-modal-body"></div>
+    <label class="form-label">Con chi vuoi scambiare?</label>
+    <select class="form-select" id="swap-partner"></select>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="swap-cancel">Annulla</button>
+      <button class="btn-primary" id="swap-confirm">Invia richiesta</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================
+   CONFIG — stesso progetto Supabase di CrunchClub
+   ===================================================== */
+const SUPABASE_URL = 'https://wxhysgthyebydoupsjrh.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4aHlzZ3RoeWVieWRvdXBzanJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0NjEwNTcsImV4cCI6MjA5ODAzNzA1N30.93IVIg62GM8oPYvuvQ9xcvbwYPpbM0XzOPWM4RdIsic';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const ADMIN_WHATSAPP = '393926893010'; // numero admin in formato internazionale senza +
+
+/* =====================================================
+   ANAGRAFICA & LOGICA PATTERN
+   Gli addetti reali arrivano dalla tabella "addetti" già esistente
+   (condivisa con l'app CrunchClub). Li riconosciamo per nome.
+   ===================================================== */
+function normalize(s){
+  return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+}
+// chiave di gruppo dedotta dal nome registrato in "addetti"
+function groupKeyFor(nome){
+  const n = normalize(nome);
+  if (n.includes('toto')) return 'toto';
+  if (n.includes('davide')) return 'davide';
+  if (n.includes('francesco')) return 'francesco';
+  if (n.includes('mimmo')) return 'mimmo';
+  if (n.includes('vito')) return 'vito';
+  if (n.includes('gaspare')) return 'gaspare';
+  if (n.includes('admin')) return 'admin';
+  return null;
+}
+
+const ANCHOR_MONDAY = new Date('2026-06-29T00:00:00');
+const ANCHOR_ROLES = { toto: 2, davide: 0, francesco: 1 }; // C, A, B
+const ROLE_DAYS = { 0: [1, 4], 1: [2, 5], 2: [3] };
+const APP_URL = 'https://friggitoriafratellicaruso.github.io/turni-friggitoria/';
+
+// Numeri WhatsApp dei dipendenti (formato internazionale, senza +)
+const PHONE_NUMBERS = {
+  toto: '393714729659',
+  davide: '393295815032',
+  francesco: '393792287452',
+  mimmo: '393204740327',
+  vito: '393669771747'
+};
+
+const GRUPPO_ROTAZIONE_KEYS = ['toto', 'davide', 'francesco'];
+const GRUPPO_FISSO_KEYS = { mimmo: 'mattina', vito: 'pomeriggio' };
+
+const SHIFT_LABELS = {
+  giornata_intera: { nome:'GIORNATA INTERA', badge:'badge-intera', icon:'●' },
+  mezza_giornata:  { nome:'MEZZA GIORNATA',  badge:'badge-mezza', icon:'◐' },
+  mattina:         { nome:'MATTINA',         badge:'badge-mattina', icon:'▲' },
+  pomeriggio:      { nome:'POMERIGGIO',      badge:'badge-pomeriggio', icon:'▼' },
+  riposo:          { nome:'RIPOSO',          badge:'badge-mezza', icon:'–' },
+  assente_malattia:{ nome:'ASSENTE (MALATTIA)', badge:'badge-assente', icon:'✕' }
+};
+
+// Ordine di visualizzazione nella lista turni giornalieri:
+// mezza giornata prima, poi Mimmo (mattina), poi giornata intera, poi Vito (pomeriggio), poi assenze
+const SHIFT_ORDER = { mezza_giornata: 0, mattina: 1, giornata_intera: 2, pomeriggio: 3, riposo: 4, assente_malattia: 5 };
+const GIORNI = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
+
+let currentUser = null;       // record da tabella addetti: {id, nome, ruolo, pin, attivo}
+let selectedAddetto = null;   // record selezionato in fase di login
+let allAddetti = [];          // cache di tutti gli addetti attivi
+let currentMonday = getMondayOf(new Date());
+let overridesCache = {};      // { 'YYYY-MM-DD_addettoId': tipo_turno }
+let requestsCache = [];
+
+/* ---------- date helpers ---------- */
+function getMondayOf(d){
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+  date.setHours(0,0,0,0);
+  return date;
+}
+function addDays(d, n){ const r = new Date(d); r.setDate(r.getDate()+n); return r; }
+function fmtISO(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function fmtLabel(d){ return d.toLocaleDateString('it-IT', {day:'2-digit', month:'2-digit'}); }
+function weeksBetween(monday){ return Math.round((monday.getTime() - ANCHOR_MONDAY.getTime()) / (7*24*3600*1000)); }
+
+function roleForWeek(key, monday){
+  const base = ANCHOR_ROLES[key];
+  const offset = weeksBetween(monday);
+  return ((base + offset) % 3 + 3) % 3;
+}
+
+// Francesco non può MAI fare la mezza giornata di lunedì (impegni di laboratorio).
+// Quando il pattern gli assegna il lunedì (ruolo A), scambia automaticamente
+// lunedì↔martedì con chi quella settimana ha il ruolo B (martedì+venerdì).
+function autoSwapInfo(monday){
+  const roles = {};
+  GRUPPO_ROTAZIONE_KEYS.forEach(k => { roles[k] = roleForWeek(k, monday); });
+  if (roles['francesco'] !== 0) return null; // Francesco non ha ruolo A questa settimana: nessuno scambio
+  const roleBKey = GRUPPO_ROTAZIONE_KEYS.find(k => roles[k] === 1);
+  return { mondayKey: 'francesco', tuesdayKey: roleBKey };
+}
+
+// turno di base (senza override manuali) per una CHIAVE di gruppo (toto/davide/francesco/mimmo/vito)
+// ritorna { tipo, auto } dove auto=true se il turno di quel giorno è frutto dello scambio automatico del lunedì
+function baseShiftForKey(key, date){
+  const weekday = date.getDay();
+  if (weekday === 0) return null; // chiuso
+  if (GRUPPO_ROTAZIONE_KEYS.includes(key)){
+    if (weekday === 6) return { tipo:'giornata_intera', auto:false };
+    const monday = getMondayOf(date);
+    const role = roleForWeek(key, monday);
+    const swap = autoSwapInfo(monday);
+
+    if (swap && weekday === 1){ // lunedì
+      if (key === swap.mondayKey) return { tipo:'giornata_intera', auto:true };
+      if (key === swap.tuesdayKey) return { tipo:'mezza_giornata', auto:true };
+    }
+    if (swap && weekday === 2){ // martedì
+      if (key === swap.mondayKey) return { tipo:'mezza_giornata', auto:true };
+      if (key === swap.tuesdayKey) return { tipo:'giornata_intera', auto:true };
+    }
+
+    const tipo = ROLE_DAYS[role].includes(weekday) ? 'mezza_giornata' : 'giornata_intera';
+    return { tipo, auto:false };
+  }
+  if (key === 'mimmo') return { tipo:'mattina', auto:false };
+  if (key === 'vito') return { tipo:'pomeriggio', auto:false };
+  if (key === 'gaspare') return { tipo:'giornata_intera', auto:false }; // sempre, incluso sabato
+  if (key === 'admin') return null; // nessun turno di default: solo se assegnato manualmente dal pannello Admin
+  return null;
+}
+
+// ritorna { tipo, auto } effettivo, considerando eventuali override manuali salvati su supabase
+function effectiveShiftFor(addettoId, key, date){
+  const k = fmtISO(date) + '_' + addettoId;
+  if (overridesCache[k]) return { tipo: overridesCache[k], auto:false };
+  return baseShiftForKey(key, date);
+}
+
+// addetti che fanno parte della pianificazione turni (esclude eventuali altri profili cassa)
+function scheduledAddetti(){
+  return allAddetti
+    .map(a => ({ ...a, _key: groupKeyFor(a.nome) }))
+    .filter(a => a._key !== null);
+}
+
+function swapPartnersFor(key){
+  if (GRUPPO_ROTAZIONE_KEYS.includes(key)) return GRUPPO_ROTAZIONE_KEYS.filter(k=>k!==key);
+  if (key === 'mimmo') return ['vito'];
+  if (key === 'vito') return ['mimmo'];
+  // Gaspare e Admin non hanno un flusso di richiesta scambio tra colleghi:
+  // eventuali riposi/coperture si gestiscono manualmente dal pannello Admin.
+  return [];
+}
+
+/* =====================================================
+   LOGIN
+   ===================================================== */
+async function loadAddetti(){
+  const { data, error } = await sb.from('addetti').select('*').eq('attivo', true).order('nome');
+  if (error){ console.error(error); return []; }
+  return data || [];
+}
+
+function renderLoginGrid(){
+  const grid = document.getElementById('user-grid');
+  grid.innerHTML = '';
+  const scheduled = scheduledAddetti();
+  const others = allAddetti.filter(a => groupKeyFor(a.nome) === null); // es. admin puro, altri profili
+  const toShow = [...scheduled, ...others.map(a=>({...a,_key:null}))];
+
+  if (!toShow.length){
+    grid.innerHTML = `<div style="grid-column:1/-1; font-size:13px; color:var(--char-soft)">
+      Nessun addetto trovato in Supabase. Aggiungili dalla sezione "Addetti" dell'app CrunchClub.
+    </div>`;
+    return;
+  }
+
+  toShow.forEach(a=>{
+    const chip = document.createElement('button');
+    chip.className = 'user-chip';
+    chip.textContent = a.nome;
+    chip.onclick = ()=>{
+      document.querySelectorAll('.user-chip').forEach(c=>c.classList.remove('selected'));
+      chip.classList.add('selected');
+      selectedAddetto = a;
+      document.getElementById('pin-area').style.display = 'block';
+      document.getElementById('pin-input').value = '';
+      document.getElementById('login-error').textContent = '';
+      document.getElementById('pin-input').focus();
+    };
+    grid.appendChild(chip);
+  });
+}
+
+async function attemptLogin(){
+  const pin = document.getElementById('pin-input').value.trim();
+  const errBox = document.getElementById('login-error');
+  if (!selectedAddetto){ errBox.textContent = 'Seleziona il tuo nome.'; return; }
+  if (!pin){ errBox.textContent = 'Inserisci il PIN.'; return; }
+  if (selectedAddetto.pin !== pin){ errBox.textContent = 'PIN errato.'; return; }
+
+  currentUser = selectedAddetto;
+  localStorage.setItem('turni_session', JSON.stringify({ id: currentUser.id, ts: Date.now() }));
+  enterApp();
+}
+
+document.getElementById('login-btn').onclick = attemptLogin;
+document.getElementById('pin-input').addEventListener('keydown', e=>{ if(e.key==='Enter') attemptLogin(); });
+
+function tryRestoreSession(){
+  const raw = localStorage.getItem('turni_session');
+  if (!raw) return null;
+  try{
+    const sess = JSON.parse(raw);
+    if (Date.now() - sess.ts > 12*3600*1000){ localStorage.removeItem('turni_session'); return null; }
+    return sess.id;
+  } catch(e){ return null; }
+}
+
+document.getElementById('logout-btn').onclick = ()=>{
+  localStorage.removeItem('turni_session');
+  currentUser = null;
+  document.getElementById('app-screen').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  renderLoginGrid();
+};
+
+/* =====================================================
+   APP SHELL
+   ===================================================== */
+async function enterApp(){
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'flex';
+  document.getElementById('header-title').textContent = 'Ciao ' + currentUser.nome;
+  document.getElementById('header-role').textContent = currentUser.ruolo === 'admin' ? 'Amministratore' : currentUser.ruolo;
+  document.getElementById('tab-admin-btn').style.display = currentUser.ruolo === 'admin' ? 'block' : 'none';
+  document.getElementById('tab-stats-btn').style.display = currentUser.ruolo === 'admin' ? 'block' : 'none';
+
+  await refreshOverrides();
+  await refreshRequests();
+  renderWeek();
+  renderScambi();
+  if (currentUser.ruolo === 'admin') { renderAdmin(); renderStats(); }
+}
+
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.onclick = ()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  };
+});
+
+/* =====================================================
+   DATI: override e richieste
+   ===================================================== */
+async function refreshOverrides(){
+  const from = fmtISO(addDays(currentMonday, -7));
+  const to = fmtISO(addDays(currentMonday, 14));
+  const { data, error } = await sb.from('turni_override').select('*').gte('data', from).lte('data', to);
+  overridesCache = {};
+  if (!error && data){
+    data.forEach(r=>{ overridesCache[r.data + '_' + r.addetto_id] = r.tipo_turno; });
+  }
+}
+
+async function refreshRequests(){
+  const { data, error } = await sb.from('richieste_scambio').select('*').order('creato_il', {ascending:false});
+  if (!error) requestsCache = data || [];
+}
+
+/* =====================================================
+   RENDER SETTIMANA
+   ===================================================== */
+document.getElementById('week-prev').onclick = ()=>{ currentMonday = addDays(currentMonday,-7); refreshOverrides().then(renderWeek); };
+document.getElementById('week-next').onclick = ()=>{ currentMonday = addDays(currentMonday,7); refreshOverrides().then(renderWeek); };
+
+function renderWeek(){
+  const label = document.getElementById('week-label');
+  const sunday = addDays(currentMonday,6);
+  label.innerHTML = `${fmtLabel(currentMonday)} – ${fmtLabel(sunday)}<small>${currentMonday.getFullYear()}</small>`;
+
+  const container = document.getElementById('week-container');
+  container.innerHTML = '';
+  const today = fmtISO(new Date());
+  const scheduled = scheduledAddetti();
+
+  for (let i=0;i<7;i++){
+    const date = addDays(currentMonday, i);
+    const iso = fmtISO(date);
+    const weekday = date.getDay();
+    const ticket = document.createElement('div');
+    ticket.className = 'day-ticket' + (iso === today ? ' today' : '');
+
+    let bodyHtml = '';
+    let banconistiSera = 0;
+    let laboratorioSera = 0;
+    if (weekday === 0){
+      bodyHtml = `<div class="day-closed">Chiuso</div>`;
+    } else {
+      const withShifts = scheduled
+        .map(a => ({ a, result: effectiveShiftFor(a.id, a._key, date) }))
+        .filter(x => x.result && x.result.tipo !== 'riposo')
+        .sort((x, y) => (SHIFT_ORDER[x.result.tipo] ?? 9) - (SHIFT_ORDER[y.result.tipo] ?? 9));
+
+      const seraShifts = withShifts.filter(x => x.result.tipo === 'giornata_intera' || x.result.tipo === 'pomeriggio');
+      banconistiSera = seraShifts.filter(x => x.a._key !== 'francesco').length;
+      laboratorioSera = seraShifts.filter(x => x.a._key === 'francesco').length;
+
+      withShifts.forEach(({ a, result })=>{
+        const shift = result.tipo;
+        const info = SHIFT_LABELS[shift];
+        const isMine = currentUser.id === a.id;
+        const isAssente = shift === 'assente_malattia';
+        const canSwap = isMine && currentUser.ruolo !== 'admin' && !isAssente;
+        bodyHtml += `
+          <div class="shift-row${result.auto ? ' auto-swap' : ''}${isAssente ? ' assente' : ''}">
+            <div class="shift-badge ${info.badge}">${info.icon}</div>
+            <div class="shift-info">
+              <div class="shift-name">${a.nome}${isMine ? ' (tu)' : ''}</div>
+              <div class="shift-time">${info.nome}</div>
+              ${result.auto ? `<div class="auto-swap-tag">⇄ Scambio automatico (lab. lunedì)</div>` : ''}
+            </div>
+            ${canSwap ? `<button class="swap-btn" onclick="openSwapModal(${a.id},'${a._key}','${iso}','${shift}')">Scambia</button>` : ''}
+          </div>`;
+      });
+      if (!bodyHtml) bodyHtml = `<div class="day-closed">Nessun turno</div>`;
+    }
+
+    ticket.innerHTML = `
+      <div class="day-head">
+        <span class="dname">${GIORNI[weekday]}</span>
+        <span class="day-head-right">
+          ${weekday !== 0 ? `<span class="banconisti-badge">🔥 LABORATORIO: ${laboratorioSera} · 🍺 BANCONISTI: ${banconistiSera}</span>` : ''}
+          <span class="ddate">${fmtLabel(date)}</span>
+        </span>
+      </div>
+      <div class="day-body">${bodyHtml}</div>`;
+    container.appendChild(ticket);
+  }
+}
+
+/* =====================================================
+   SCAMBI — modal proposta
+   ===================================================== */
+let pendingSwap = null; // { addettoId, key, dateISO, shift }
+
+function openSwapModal(addettoId, key, dateISO, shift){
+  pendingSwap = { addettoId, key, dateISO, shift };
+  const info = SHIFT_LABELS[shift];
+  const d = new Date(dateISO + 'T00:00:00');
+  document.getElementById('swap-modal-body').innerHTML =
+    `<p style="font-size:13.5px; color:var(--char-soft); margin-top:0">
+      Turno: <strong>${info.nome}</strong><br>${GIORNI[d.getDay()]} ${fmtLabel(d)}
+    </p>`;
+  const select = document.getElementById('swap-partner');
+  select.innerHTML = '';
+  const partnerKeys = swapPartnersFor(key);
+  scheduledAddetti().filter(a=>partnerKeys.includes(a._key)).forEach(a=>{
+    const opt = document.createElement('option');
+    opt.value = a.id; opt.textContent = a.nome;
+    select.appendChild(opt);
+  });
+  document.getElementById('swap-modal').classList.add('open');
+}
+document.getElementById('swap-cancel').onclick = ()=> document.getElementById('swap-modal').classList.remove('open');
+
+document.getElementById('swap-confirm').onclick = async ()=>{
+  if (!pendingSwap) return;
+  const partnerId = parseInt(document.getElementById('swap-partner').value, 10);
+  const partnerKey = groupKeyFor(nomeById(partnerId));
+  const { error } = await sb.from('richieste_scambio').insert({
+    data_turno: pendingSwap.dateISO,
+    richiedente_id: pendingSwap.addettoId,
+    destinatario_id: partnerId,
+    stato: 'attesa_destinatario'
+  });
+  document.getElementById('swap-modal').classList.remove('open');
+  if (error){ showToast('Errore: ' + error.message); return; }
+
+  const d = new Date(pendingSwap.dateISO + 'T00:00:00');
+  const dataStr = `${GIORNI[d.getDay()]} ${fmtLabel(d)}`;
+  const nomeRichiedente = nomeById(pendingSwap.addettoId);
+  const partnerPhone = PHONE_NUMBERS[partnerKey];
+
+  const ok = await sendWhatsAppTemplate(partnerPhone, 'richiesta_scambio', [nomeRichiedente, dataStr, APP_URL]);
+  if (ok){
+    showToast('Richiesta inviata, notifica WhatsApp recapitata.');
+  } else {
+    showToast('Richiesta salvata, ma la notifica WhatsApp non è partita.');
+    const msg = `🔄 Hai ricevuto una richiesta di scambio turno da ${nomeRichiedente} per ${dataStr}.\n\nVai sulla pagina per accettare o rifiutare:\n${APP_URL}`;
+    showWhatsAppLinks('Invio automatico non riuscito', [
+      { label: `Avvisa ${nomeById(partnerId)} manualmente`, phone: partnerPhone, text: msg }
+    ]);
+  }
+
+  await refreshRequests();
+  renderScambi();
+};
+
+
+/* =====================================================
+   TAB SCAMBI — 3 fasi: destinatario accetta/rifiuta -> admin approva/rifiuta
+   ===================================================== */
+function nomeById(id){ return allAddetti.find(a=>a.id===id)?.nome || '—'; }
+function phoneForId(id){ return PHONE_NUMBERS[groupKeyFor(nomeById(id))] || ''; }
+
+const STATO_LABELS = {
+  attesa_destinatario: { label:'In attesa del collega', cls:'status-pending' },
+  attesa_admin:        { label:'In attesa del titolare', cls:'status-pending' },
+  approvato:            { label:'Approvato', cls:'status-approvato' },
+  rifiutato:            { label:'Rifiutato', cls:'status-rifiutato' }
+};
+
+function renderScambi(){
+  const container = document.getElementById('scambi-container');
+  const isAdmin = currentUser.ruolo === 'admin';
+  const mine = isAdmin ? requestsCache : requestsCache.filter(r => r.richiedente_id === currentUser.id || r.destinatario_id === currentUser.id);
+
+  if (!mine.length){
+    container.innerHTML = `<div class="empty-state">Nessuna richiesta di scambio al momento.</div>`;
+    return;
+  }
+
+  container.innerHTML = mine.map(r=>{
+    const d = new Date(r.data_turno + 'T00:00:00');
+    const st = STATO_LABELS[r.stato] || { label:r.stato, cls:'status-pending' };
+
+    let actions = '';
+    if (!isAdmin && r.stato === 'attesa_destinatario' && r.destinatario_id === currentUser.id){
+      actions = `<div class="req-actions">
+          <button class="btn-approve" onclick="handleDestinatarioDecision(${r.id}, true)">Accetta</button>
+          <button class="btn-reject" onclick="handleDestinatarioDecision(${r.id}, false)">Rifiuta</button>
+        </div>`;
+    } else if (isAdmin && r.stato === 'attesa_admin'){
+      actions = `<div class="req-actions">
+          <button class="btn-approve" onclick="handleAdminDecision(${r.id}, 'approvato')">Approva</button>
+          <button class="btn-reject" onclick="handleAdminDecision(${r.id}, 'rifiutato')">Rifiuta</button>
+        </div>`;
+    }
+
+    return `
+      <div class="req-card">
+        <div class="req-top">
+          <strong style="font-size:13.5px">${GIORNI[d.getDay()]} ${fmtLabel(d)}</strong>
+          <span class="req-status ${st.cls}">${st.label}</span>
+        </div>
+        <div class="req-detail">${nomeById(r.richiedente_id)} ↔ ${nomeById(r.destinatario_id)}</div>
+        ${actions}
+      </div>`;
+  }).join('');
+}
+
+// Il collega (destinatario) accetta o rifiuta la proposta — non è ancora la decisione finale
+async function handleDestinatarioDecision(reqId, accept){
+  const req = requestsCache.find(r=>r.id === reqId);
+  if (!req) return;
+  const d = new Date(req.data_turno + 'T00:00:00');
+  const dataStr = `${GIORNI[d.getDay()]} ${fmtLabel(d)}`;
+
+  if (!accept){
+    const { error } = await sb.from('richieste_scambio').update({
+      stato: 'rifiutato', gestito_da: currentUser.id, gestito_il: new Date().toISOString(), note:'rifiutato dal collega'
+    }).eq('id', reqId);
+    if (error){ showToast('Errore: ' + error.message); return; }
+
+    const ok = await sendWhatsAppTemplate(phoneForId(req.richiedente_id), 'scambio_rifiutato_collega', [nomeById(req.destinatario_id), dataStr]);
+    if (ok){
+      showToast('Richiesta rifiutata, notifica inviata.');
+    } else {
+      showToast('Richiesta rifiutata, ma la notifica WhatsApp non è partita.');
+      const msg = `❌ ${nomeById(req.destinatario_id)} ha rifiutato la richiesta di scambio del ${dataStr}.`;
+      showWhatsAppLinks('Invio automatico non riuscito', [
+        { label: `Avvisa ${nomeById(req.richiedente_id)} manualmente`, phone: phoneForId(req.richiedente_id), text: msg }
+      ]);
+    }
+    await refreshRequests();
+    renderScambi();
+    return;
+  }
+
+  const { error } = await sb.from('richieste_scambio').update({
+    stato: 'attesa_admin', gestito_il: new Date().toISOString()
+  }).eq('id', reqId);
+  if (error){ showToast('Errore: ' + error.message); return; }
+
+  const nomeRich = nomeById(req.richiedente_id);
+  const nomeDest = nomeById(req.destinatario_id);
+  const params = [nomeRich, nomeDest, dataStr];
+  const paramsAdmin = [nomeRich, nomeDest, dataStr, APP_URL];
+
+  const results = await Promise.all([
+    sendWhatsAppTemplate(phoneForId(req.richiedente_id), 'scambio_attesa_titolare', params),
+    sendWhatsAppTemplate(phoneForId(req.destinatario_id), 'scambio_attesa_titolare', params),
+    sendWhatsAppTemplate(ADMIN_WHATSAPP, 'scambio_attesa_titolare_admin', paramsAdmin),
+  ]);
+
+  if (results.every(Boolean)){
+    showToast('Accettato! Notifiche inviate a tutti, incluso il titolare.');
+  } else {
+    showToast('Accettato, ma alcune notifiche WhatsApp non sono partite.');
+    const msgFallback = `⏳ Richiesta in sospeso, in attesa dell'approvazione del titolare.\n\n${nomeRich} ↔ ${nomeDest}\n${dataStr}`;
+    const fallbackItems = [];
+    if (!results[0]) fallbackItems.push({ label: `Avvisa ${nomeRich}`, phone: phoneForId(req.richiedente_id), text: msgFallback });
+    if (!results[1]) fallbackItems.push({ label: `Avvisa ${nomeDest}`, phone: phoneForId(req.destinatario_id), text: msgFallback });
+    if (!results[2]) fallbackItems.push({ label: `Avvisa il titolare`, phone: ADMIN_WHATSAPP, text: msgFallback + `\n\nApri per approvare:\n${APP_URL}` });
+    if (fallbackItems.length) showWhatsAppLinks('Invio automatico non riuscito per alcuni', fallbackItems);
+  }
+
+  await refreshRequests();
+  renderScambi();
+}
+
+// Decisione finale dell'admin
+async function handleAdminDecision(reqId, decision){
+  const req = requestsCache.find(r=>r.id === reqId);
+  if (!req) return;
+
+  const { error } = await sb.from('richieste_scambio').update({
+    stato: decision, gestito_da: currentUser.id, gestito_il: new Date().toISOString()
+  }).eq('id', reqId);
+  if (error){ showToast('Errore: ' + error.message); return; }
+
+  if (decision === 'approvato'){
+    const date = req.data_turno;
+    const keyRich = groupKeyFor(nomeById(req.richiedente_id));
+    const keyDest = groupKeyFor(nomeById(req.destinatario_id));
+    const shiftRichiedente = effectiveShiftFor(req.richiedente_id, keyRich, new Date(date+'T00:00:00'));
+    const shiftDestinatario = effectiveShiftFor(req.destinatario_id, keyDest, new Date(date+'T00:00:00'));
+    await sb.from('turni_override').upsert([
+      { data: date, addetto_id: req.richiedente_id, tipo_turno: shiftDestinatario.tipo, motivo:'scambio approvato', creato_da: currentUser.id },
+      { data: date, addetto_id: req.destinatario_id, tipo_turno: shiftRichiedente.tipo, motivo:'scambio approvato', creato_da: currentUser.id }
+    ], { onConflict: 'data,addetto_id' });
+
+    // Se lo scambio riguarda la settimana corrente, invia un riepilogo aggiornato al titolare
+    const mondaySwap = getMondayOf(new Date(date + 'T00:00:00'));
+    const mondayNow = getMondayOf(new Date());
+    if (fmtISO(mondaySwap) === fmtISO(mondayNow)){
+      sb.functions.invoke('weekly-summary', { body: { monday: fmtISO(mondaySwap) } }).catch(e => console.error('Aggiornamento riepilogo fallito:', e));
+    }
+  }
+
+  const d = new Date(req.data_turno + 'T00:00:00');
+  const dataStr = `${GIORNI[d.getDay()]} ${fmtLabel(d)}`;
+  const nomeRich = nomeById(req.richiedente_id);
+  const nomeDest = nomeById(req.destinatario_id);
+  const esito = decision === 'approvato' ? 'Scambio approvato dal titolare' : 'Scambio rifiutato dal titolare';
+  const params = [esito, nomeRich, nomeDest, dataStr];
+
+  const results = await Promise.all([
+    sendWhatsAppTemplate(phoneForId(req.richiedente_id), 'scambio_esito_finale', params),
+    sendWhatsAppTemplate(phoneForId(req.destinatario_id), 'scambio_esito_finale', params),
+  ]);
+
+  if (results.every(Boolean)){
+    showToast('Fatto. Notifiche inviate a entrambi.');
+  } else {
+    showToast('Fatto, ma qualche notifica WhatsApp non è partita.');
+    const msgFallback = `${decision === 'approvato' ? '✅' : '❌'} ${esito}\n\n${nomeRich} ↔ ${nomeDest}\n${dataStr}`;
+    const fallbackItems = [];
+    if (!results[0]) fallbackItems.push({ label: `Avvisa ${nomeRich}`, phone: phoneForId(req.richiedente_id), text: msgFallback });
+    if (!results[1]) fallbackItems.push({ label: `Avvisa ${nomeDest}`, phone: phoneForId(req.destinatario_id), text: msgFallback });
+    if (fallbackItems.length) showWhatsAppLinks('Invio automatico non riuscito per alcuni', fallbackItems);
+  }
+
+  await refreshOverrides();
+  await refreshRequests();
+  renderWeek();
+  renderScambi();
+}
+
+/* =====================================================
+   TAB ADMIN — modifica manuale turni, scambio rapido, gestione PIN
+   ===================================================== */
+function renderAdmin(){
+  const container = document.getElementById('admin-container');
+  container.innerHTML = `
+    <h3 style="margin-top:0">Scambio rapido tra due dipendenti</h3>
+    <p style="font-size:13px; color:var(--char-soft); margin-top:-8px">Scambia i turni di due dipendenti in una data, senza passare dalla richiesta di scambio e senza inviare notifiche WhatsApp.</p>
+    <label class="form-label">Primo dipendente</label>
+    <select class="form-select" id="quick-dip-a"></select>
+    <label class="form-label">Secondo dipendente</label>
+    <select class="form-select" id="quick-dip-b"></select>
+    <label class="form-label">Data</label>
+    <input type="date" class="form-input" id="quick-date">
+    <button class="btn-primary" style="width:100%; padding:13px; border-radius:10px; border:none;" onclick="quickSwap()">Scambia turni</button>
+
+    <h3 style="margin-top:28px">Modifica turno manuale</h3>
+    <p style="font-size:13px; color:var(--char-soft); margin-top:-8px">Per eccezioni singole: ferie, malattie, ecc. Nessuna notifica WhatsApp viene inviata.</p>
+    <label class="form-label">Dipendente</label>
+    <select class="form-select" id="admin-dip"></select>
+    <label class="form-label">Data</label>
+    <input type="date" class="form-input" id="admin-date">
+    <label class="form-label">Turno</label>
+    <select class="form-select" id="admin-shift">
+      <option value="giornata_intera">Giornata intera (8–22)</option>
+      <option value="mezza_giornata">Mezza giornata (8–16)</option>
+      <option value="mattina">Mattina (8–16)</option>
+      <option value="pomeriggio">Pomeriggio (16–22)</option>
+      <option value="riposo">Riposo</option>
+      <option value="assente_malattia">Assente per malattia</option>
+    </select>
+    <button class="btn-primary" style="width:100%; padding:13px; border-radius:10px; border:none;" onclick="saveOverride()">Salva modifica</button>
+
+    <h3 style="margin-top:28px">Gestione PIN di accesso</h3>
+    <p style="font-size:13px; color:var(--char-soft); margin-top:-8px">Modifica il PIN di accesso di ciascun addetto.</p>
+    <div id="pin-list"></div>
+  `;
+
+  const sel = document.getElementById('admin-dip');
+  const selA = document.getElementById('quick-dip-a');
+  const selB = document.getElementById('quick-dip-b');
+  scheduledAddetti().forEach(a=>{
+    [sel, selA, selB].forEach(s=>{
+      const opt = document.createElement('option'); opt.value=a.id; opt.textContent=a.nome; s.appendChild(opt);
+    });
+  });
+  document.getElementById('admin-date').value = fmtISO(new Date());
+  document.getElementById('quick-date').value = fmtISO(new Date());
+
+  renderPinList();
+}
+
+async function saveOverride(){
+  const addettoId = parseInt(document.getElementById('admin-dip').value, 10);
+  const date = document.getElementById('admin-date').value;
+  const shift = document.getElementById('admin-shift').value;
+  if (!date){ showToast('Seleziona una data.'); return; }
+  const { error } = await sb.from('turni_override').upsert({
+    data: date, addetto_id: addettoId, tipo_turno: shift, creato_da: currentUser.id
+  }, { onConflict: 'data,addetto_id' });
+  if (error){ showToast('Errore: ' + error.message); return; }
+  showToast('Turno aggiornato.');
+  await refreshOverrides();
+  renderWeek();
+}
+
+// Scambio rapido admin: scambia i turni effettivi di due dipendenti in una data, senza notifiche WhatsApp
+async function quickSwap(){
+  const idA = parseInt(document.getElementById('quick-dip-a').value, 10);
+  const idB = parseInt(document.getElementById('quick-dip-b').value, 10);
+  const date = document.getElementById('quick-date').value;
+  if (!date){ showToast('Seleziona una data.'); return; }
+  if (idA === idB){ showToast('Seleziona due dipendenti diversi.'); return; }
+
+  const aRecord = scheduledAddetti().find(a => a.id === idA);
+  const bRecord = scheduledAddetti().find(a => a.id === idB);
+  if (!aRecord || !bRecord){ showToast('Dipendente non trovato.'); return; }
+
+  const dateObj = new Date(date + 'T00:00:00');
+  const shiftA = effectiveShiftFor(idA, aRecord._key, dateObj);
+  const shiftB = effectiveShiftFor(idB, bRecord._key, dateObj);
+  if (!shiftA || !shiftB){ showToast('Uno dei due dipendenti non ha un turno in questa data.'); return; }
+
+  const { error } = await sb.from('turni_override').upsert([
+    { data: date, addetto_id: idA, tipo_turno: shiftB.tipo, motivo: 'scambio rapido admin', creato_da: currentUser.id },
+    { data: date, addetto_id: idB, tipo_turno: shiftA.tipo, motivo: 'scambio rapido admin', creato_da: currentUser.id }
+  ], { onConflict: 'data,addetto_id' });
+  if (error){ showToast('Errore: ' + error.message); return; }
+
+  showToast(`Scambiati i turni di ${aRecord.nome} e ${bRecord.nome}.`);
+  await refreshOverrides();
+  renderWeek();
+}
+
+// ── Gestione PIN ──
+function renderPinList(){
+  const list = document.getElementById('pin-list');
+  if (!list) return;
+  list.innerHTML = allAddetti.map(a => `
+    <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
+      <div style="flex:1; font-size:13.5px; font-weight:600;">${a.nome}</div>
+      <input type="text" class="form-input" style="margin-bottom:0; width:110px;" id="pin-input-${a.id}" value="${a.pin}" inputmode="numeric" maxlength="8">
+      <button class="swap-btn" onclick="savePin(${a.id})">Salva</button>
+    </div>
+  `).join('');
+}
+
+async function savePin(addettoId){
+  const input = document.getElementById(`pin-input-${addettoId}`);
+  const newPin = input.value.trim();
+  if (!newPin){ showToast('Inserisci un PIN valido.'); return; }
+  const { error } = await sb.from('addetti').update({ pin: newPin }).eq('id', addettoId);
+  if (error){ showToast('Errore: ' + error.message); return; }
+  const record = allAddetti.find(a => a.id === addettoId);
+  if (record) record.pin = newPin;
+  showToast('PIN aggiornato.');
+}
+
+/* =====================================================
+   TAB STATISTICHE (solo admin) — vista a calendario: evidenzia i giorni con 4+ banconisti la sera
+   ===================================================== */
+let statsMonth = (() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; })();
+const SOGLIA_BANCONISTI = 4;
+
+function changeStatsMonth(delta){
+  statsMonth = new Date(statsMonth.getFullYear(), statsMonth.getMonth() + delta, 1);
+  renderStats();
+}
+
+// conta banconisti/laboratorio la sera per una data, usando una mappa di override locale (mese selezionato)
+function seraCountsForDate(date, overrideMapLocal){
+  let banconisti = 0, laboratorio = 0;
+  scheduledAddetti().forEach(a=>{
+    const key = fmtISO(date) + '_' + a.id;
+    const tipo = overrideMapLocal[key] || baseShiftForKey(a._key, date);
+    if (tipo === 'giornata_intera' || tipo === 'pomeriggio'){
+      if (a._key === 'francesco') laboratorio++; else banconisti++;
+    }
+  });
+  return { banconisti, laboratorio };
+}
+
+async function renderStats(){
+  const container = document.getElementById('stats-container');
+  if (!container) return;
+  container.innerHTML = `<div class="empty-state">Calcolo in corso…</div>`;
+
+  const year = statsMonth.getFullYear();
+  const month = statsMonth.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const fromISO = fmtISO(firstDay);
+  const toISO = fmtISO(lastDay);
+
+  const { data: overridesData, error } = await sb.from('turni_override')
+    .select('data,addetto_id,tipo_turno').gte('data', fromISO).lte('data', toISO);
+  const overrideMapLocal = {};
+  if (!error && overridesData){
+    overridesData.forEach(o => { overrideMapLocal[o.data + '_' + o.addetto_id] = o.tipo_turno; });
+  }
+
+  // Costruisco le celle: vuote prima del 1° (a seconda del giorno della settimana) + un giorno per data del mese
+  const cells = [];
+  const firstWeekday = firstDay.getDay(); // 0=dom..6=sab
+  const leadingBlanks = firstWeekday === 0 ? 6 : firstWeekday - 1; // la settimana inizia di lunedì
+  for (let i=0;i<leadingBlanks;i++) cells.push(null);
+
+  let giorniEvidenziati = 0;
+  for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate()+1)){
+    const weekday = d.getDay();
+    if (weekday === 0){
+      cells.push({ closed:true, dayNum: d.getDate() });
+      continue;
+    }
+    const { banconisti } = seraCountsForDate(d, overrideMapLocal);
+    const highlight = banconisti >= SOGLIA_BANCONISTI;
+    if (highlight) giorniEvidenziati++;
+    cells.push({ dayNum: d.getDate(), banconisti, highlight });
+  }
+
+  const monthLabel = firstDay.toLocaleDateString('it-IT', { month:'long', year:'numeric' });
+
+  container.innerHTML = `
+    <div class="week-nav">
+      <button onclick="changeStatsMonth(-1)">‹</button>
+      <div class="week-label" style="text-transform:capitalize">${monthLabel}</div>
+      <button onclick="changeStatsMonth(1)">›</button>
+    </div>
+    <p style="font-size:13px; color:var(--char-soft); margin-top:-6px">
+      Giorni evidenziati in arancio: <strong>${SOGLIA_BANCONISTI} o più</strong> banconisti presenti la sera (giornata intera + pomeriggio). Trovati questo mese: <strong>${giorniEvidenziati}</strong>.
+    </p>
+    <div class="stats-grid-labels">
+      ${['L','M','M','G','V','S','D'].map(l=>`<div>${l}</div>`).join('')}
+    </div>
+    <div class="stats-grid">
+      ${cells.map(c=>{
+        if (c === null) return `<div class="stats-cell empty"></div>`;
+        if (c.closed) return `<div class="stats-cell closed">${c.dayNum}</div>`;
+        return `<div class="stats-cell${c.highlight ? ' highlight' : ''}">
+          <span class="sc-day">${c.dayNum}</span>
+          <span class="sc-count">${c.banconisti}</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <p style="font-size:12px; color:var(--char-soft); margin-top:16px;">Il numero nella cella è il totale banconisti di quel giorno la sera. Include ferie/malattie/scambi già registrati.</p>
+  `;
+}
+
+/* =====================================================
+   TOAST
+   ===================================================== */
+// Mostra una serie di messaggi WhatsApp da inviare come pulsanti separati.
+// I browser bloccano l'apertura automatica di più wa.me in sequenza (popup blocker):
+// ogni pulsante è un tap reale dell'utente, quindi non viene mai bloccato.
+// Invia un messaggio WhatsApp tramite la Edge Function (WhatsApp Cloud API).
+// Ritorna true se inviato con successo, false altrimenti.
+async function sendWhatsAppTemplate(phone, template, params){
+  if (!phone) return false;
+  try {
+    const { data, error } = await sb.functions.invoke('send-whatsapp', {
+      body: { to: phone, template, params }
+    });
+    if (error || (data && data.error)) throw error || data.error;
+    return true;
+  } catch (e) {
+    console.error('Invio WhatsApp fallito:', e);
+    return false;
+  }
+}
+
+function showWhatsAppLinks(title, items){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.innerHTML = `<h3>${title}</h3><p style="font-size:13px;color:var(--char-soft);margin-top:-6px">Tocca ciascun pulsante per inviare il messaggio (il browser blocca l'apertura automatica di più chat insieme).</p>`;
+  const btnWrap = document.createElement('div');
+  btnWrap.style.cssText = 'display:flex;flex-direction:column;gap:10px;margin-top:14px';
+  items.forEach(it=>{
+    const btn = document.createElement('button');
+    btn.className = 'btn-primary';
+    btn.style.cssText = 'padding:13px;border-radius:10px;border:none;';
+    btn.textContent = it.label;
+    btn.onclick = ()=>{
+      window.open(`https://wa.me/${it.phone || ''}?text=${encodeURIComponent(it.text)}`, '_blank');
+      btn.textContent = '✓ ' + it.label;
+      btn.disabled = true;
+      btn.style.opacity = 0.55;
+    };
+    btnWrap.appendChild(btn);
+  });
+  modal.appendChild(btnWrap);
+  const actions = document.createElement('div');
+  actions.className = 'modal-actions';
+  actions.style.marginTop = '14px';
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn-secondary';
+  closeBtn.textContent = 'Chiudi';
+  closeBtn.onclick = ()=> overlay.remove();
+  actions.appendChild(closeBtn);
+  modal.appendChild(actions);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+}
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(()=>{ t.style.display = 'none'; }, 3200);
+}
+
+/* =====================================================
+   BOOT
+   ===================================================== */
+(async function boot(){
+  allAddetti = await loadAddetti();
+  renderLoginGrid();
+  const savedId = tryRestoreSession();
+  if (savedId){
+    const match = allAddetti.find(a=>a.id===savedId);
+    if (match){ currentUser = match; enterApp(); }
+  }
+})();
+</script>
+</body>
+</html>
