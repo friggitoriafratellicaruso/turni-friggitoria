@@ -539,16 +539,26 @@ document.getElementById('swap-confirm').onclick = async ()=>{
   document.getElementById('swap-modal').classList.remove('open');
   if (error){ showToast('Errore: ' + error.message); return; }
 
-  showToast('Richiesta inviata. Apro WhatsApp…');
   const d = new Date(pendingSwap.dateISO + 'T00:00:00');
+  const dataStr = `${GIORNI[d.getDay()]} ${fmtLabel(d)}`;
   const nomeRichiedente = nomeById(pendingSwap.addettoId);
-  const msg = `🔄 Hai ricevuto una richiesta di scambio turno da ${nomeRichiedente} per ${GIORNI[d.getDay()]} ${fmtLabel(d)} (${SHIFT_LABELS[pendingSwap.shift].nome}).\n\nVai sulla pagina per accettare o rifiutare:\n${APP_URL}`;
   const partnerPhone = PHONE_NUMBERS[partnerKey];
-  window.open(`https://wa.me/${partnerPhone || ''}?text=${encodeURIComponent(msg)}`, '_blank');
+
+  const ok = await sendWhatsAppTemplate(partnerPhone, 'richiesta_scambio', [nomeRichiedente, dataStr, APP_URL]);
+  if (ok){
+    showToast('Richiesta inviata, notifica WhatsApp recapitata.');
+  } else {
+    showToast('Richiesta salvata, ma la notifica WhatsApp non è partita.');
+    const msg = `🔄 Hai ricevuto una richiesta di scambio turno da ${nomeRichiedente} per ${dataStr}.\n\nVai sulla pagina per accettare o rifiutare:\n${APP_URL}`;
+    showWhatsAppLinks('Invio automatico non riuscito', [
+      { label: `Avvisa ${nomeById(partnerId)} manualmente`, phone: partnerPhone, text: msg }
+    ]);
+  }
 
   await refreshRequests();
   renderScambi();
 };
+
 
 /* =====================================================
    TAB SCAMBI — 3 fasi: destinatario accetta/rifiuta -> admin approva/rifiuta
@@ -606,16 +616,25 @@ function renderScambi(){
 async function handleDestinatarioDecision(reqId, accept){
   const req = requestsCache.find(r=>r.id === reqId);
   if (!req) return;
+  const d = new Date(req.data_turno + 'T00:00:00');
+  const dataStr = `${GIORNI[d.getDay()]} ${fmtLabel(d)}`;
 
   if (!accept){
     const { error } = await sb.from('richieste_scambio').update({
       stato: 'rifiutato', gestito_da: currentUser.id, gestito_il: new Date().toISOString(), note:'rifiutato dal collega'
     }).eq('id', reqId);
     if (error){ showToast('Errore: ' + error.message); return; }
-    showToast('Richiesta rifiutata.');
-    const d = new Date(req.data_turno + 'T00:00:00');
-    const msg = `❌ ${nomeById(req.destinatario_id)} ha rifiutato la richiesta di scambio del ${GIORNI[d.getDay()]} ${fmtLabel(d)}.`;
-    window.open(`https://wa.me/${phoneForId(req.richiedente_id)}?text=${encodeURIComponent(msg)}`, '_blank');
+
+    const ok = await sendWhatsAppTemplate(phoneForId(req.richiedente_id), 'scambio_rifiutato_collega', [nomeById(req.destinatario_id), dataStr]);
+    if (ok){
+      showToast('Richiesta rifiutata, notifica inviata.');
+    } else {
+      showToast('Richiesta rifiutata, ma la notifica WhatsApp non è partita.');
+      const msg = `❌ ${nomeById(req.destinatario_id)} ha rifiutato la richiesta di scambio del ${dataStr}.`;
+      showWhatsAppLinks('Invio automatico non riuscito', [
+        { label: `Avvisa ${nomeById(req.richiedente_id)} manualmente`, phone: phoneForId(req.richiedente_id), text: msg }
+      ]);
+    }
     await refreshRequests();
     renderScambi();
     return;
@@ -626,16 +645,28 @@ async function handleDestinatarioDecision(reqId, accept){
   }).eq('id', reqId);
   if (error){ showToast('Errore: ' + error.message); return; }
 
-  showToast('Accettato. In attesa del titolare. Apro WhatsApp…');
-  const d = new Date(req.data_turno + 'T00:00:00');
-  const dataStr = `${GIORNI[d.getDay()]} ${fmtLabel(d)}`;
+  const nomeRich = nomeById(req.richiedente_id);
+  const nomeDest = nomeById(req.destinatario_id);
+  const params = [nomeRich, nomeDest, dataStr];
+  const paramsAdmin = [nomeRich, nomeDest, dataStr, APP_URL];
 
-  const msgDip = `⏳ Richiesta in sospeso, in attesa dell'approvazione del titolare.\n\n${nomeById(req.richiedente_id)} ↔ ${nomeById(req.destinatario_id)}\n${dataStr}`;
-  window.open(`https://wa.me/${phoneForId(req.richiedente_id)}?text=${encodeURIComponent(msgDip)}`, '_blank');
-  window.open(`https://wa.me/${phoneForId(req.destinatario_id)}?text=${encodeURIComponent(msgDip)}`, '_blank');
+  const results = await Promise.all([
+    sendWhatsAppTemplate(phoneForId(req.richiedente_id), 'scambio_attesa_titolare', params),
+    sendWhatsAppTemplate(phoneForId(req.destinatario_id), 'scambio_attesa_titolare', params),
+    sendWhatsAppTemplate(ADMIN_WHATSAPP, 'scambio_attesa_titolare_admin', paramsAdmin),
+  ]);
 
-  const msgAdmin = `📋 I tuoi dipendenti hanno concordato uno scambio turno, in attesa della tua approvazione.\n\n${nomeById(req.richiedente_id)} ↔ ${nomeById(req.destinatario_id)}\n${dataStr}\n\nApri per approvare:\n${APP_URL}`;
-  window.open(`https://wa.me/${ADMIN_WHATSAPP}?text=${encodeURIComponent(msgAdmin)}`, '_blank');
+  if (results.every(Boolean)){
+    showToast('Accettato! Notifiche inviate a tutti, incluso il titolare.');
+  } else {
+    showToast('Accettato, ma alcune notifiche WhatsApp non sono partite.');
+    const msgFallback = `⏳ Richiesta in sospeso, in attesa dell'approvazione del titolare.\n\n${nomeRich} ↔ ${nomeDest}\n${dataStr}`;
+    const fallbackItems = [];
+    if (!results[0]) fallbackItems.push({ label: `Avvisa ${nomeRich}`, phone: phoneForId(req.richiedente_id), text: msgFallback });
+    if (!results[1]) fallbackItems.push({ label: `Avvisa ${nomeDest}`, phone: phoneForId(req.destinatario_id), text: msgFallback });
+    if (!results[2]) fallbackItems.push({ label: `Avvisa il titolare`, phone: ADMIN_WHATSAPP, text: msgFallback + `\n\nApri per approvare:\n${APP_URL}` });
+    if (fallbackItems.length) showWhatsAppLinks('Invio automatico non riuscito per alcuni', fallbackItems);
+  }
 
   await refreshRequests();
   renderScambi();
@@ -661,14 +692,37 @@ async function handleAdminDecision(reqId, decision){
       { data: date, addetto_id: req.richiedente_id, tipo_turno: shiftDestinatario.tipo, motivo:'scambio approvato', creato_da: currentUser.id },
       { data: date, addetto_id: req.destinatario_id, tipo_turno: shiftRichiedente.tipo, motivo:'scambio approvato', creato_da: currentUser.id }
     ], { onConflict: 'data,addetto_id' });
+
+    // Se lo scambio riguarda la settimana corrente, invia un riepilogo aggiornato al titolare
+    const mondaySwap = getMondayOf(new Date(date + 'T00:00:00'));
+    const mondayNow = getMondayOf(new Date());
+    if (fmtISO(mondaySwap) === fmtISO(mondayNow)){
+      sb.functions.invoke('weekly-summary', { body: { monday: fmtISO(mondaySwap) } }).catch(e => console.error('Aggiornamento riepilogo fallito:', e));
+    }
   }
 
   const d = new Date(req.data_turno + 'T00:00:00');
-  const esito = decision === 'approvato' ? '✅ Scambio approvato dal titolare' : '❌ Scambio rifiutato dal titolare';
-  const msg = `${esito}\n\n${nomeById(req.richiedente_id)} ↔ ${nomeById(req.destinatario_id)}\n${GIORNI[d.getDay()]} ${fmtLabel(d)}`;
-  showToast('Fatto. Apro WhatsApp…');
-  window.open(`https://wa.me/${phoneForId(req.richiedente_id)}?text=${encodeURIComponent(msg)}`, '_blank');
-  window.open(`https://wa.me/${phoneForId(req.destinatario_id)}?text=${encodeURIComponent(msg)}`, '_blank');
+  const dataStr = `${GIORNI[d.getDay()]} ${fmtLabel(d)}`;
+  const nomeRich = nomeById(req.richiedente_id);
+  const nomeDest = nomeById(req.destinatario_id);
+  const esito = decision === 'approvato' ? 'Scambio approvato dal titolare' : 'Scambio rifiutato dal titolare';
+  const params = [esito, nomeRich, nomeDest, dataStr];
+
+  const results = await Promise.all([
+    sendWhatsAppTemplate(phoneForId(req.richiedente_id), 'scambio_esito_finale', params),
+    sendWhatsAppTemplate(phoneForId(req.destinatario_id), 'scambio_esito_finale', params),
+  ]);
+
+  if (results.every(Boolean)){
+    showToast('Fatto. Notifiche inviate a entrambi.');
+  } else {
+    showToast('Fatto, ma qualche notifica WhatsApp non è partita.');
+    const msgFallback = `${decision === 'approvato' ? '✅' : '❌'} ${esito}\n\n${nomeRich} ↔ ${nomeDest}\n${dataStr}`;
+    const fallbackItems = [];
+    if (!results[0]) fallbackItems.push({ label: `Avvisa ${nomeRich}`, phone: phoneForId(req.richiedente_id), text: msgFallback });
+    if (!results[1]) fallbackItems.push({ label: `Avvisa ${nomeDest}`, phone: phoneForId(req.destinatario_id), text: msgFallback });
+    if (fallbackItems.length) showWhatsAppLinks('Invio automatico non riuscito per alcuni', fallbackItems);
+  }
 
   await refreshOverrides();
   await refreshRequests();
@@ -723,6 +777,60 @@ async function saveOverride(){
 /* =====================================================
    TOAST
    ===================================================== */
+// Mostra una serie di messaggi WhatsApp da inviare come pulsanti separati.
+// I browser bloccano l'apertura automatica di più wa.me in sequenza (popup blocker):
+// ogni pulsante è un tap reale dell'utente, quindi non viene mai bloccato.
+// Invia un messaggio WhatsApp tramite la Edge Function (WhatsApp Cloud API).
+// Ritorna true se inviato con successo, false altrimenti.
+async function sendWhatsAppTemplate(phone, template, params){
+  if (!phone) return false;
+  try {
+    const { data, error } = await sb.functions.invoke('send-whatsapp', {
+      body: { to: phone, template, params }
+    });
+    if (error || (data && data.error)) throw error || data.error;
+    return true;
+  } catch (e) {
+    console.error('Invio WhatsApp fallito:', e);
+    return false;
+  }
+}
+
+function showWhatsAppLinks(title, items){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.innerHTML = `<h3>${title}</h3><p style="font-size:13px;color:var(--char-soft);margin-top:-6px">Tocca ciascun pulsante per inviare il messaggio (il browser blocca l'apertura automatica di più chat insieme).</p>`;
+  const btnWrap = document.createElement('div');
+  btnWrap.style.cssText = 'display:flex;flex-direction:column;gap:10px;margin-top:14px';
+  items.forEach(it=>{
+    const btn = document.createElement('button');
+    btn.className = 'btn-primary';
+    btn.style.cssText = 'padding:13px;border-radius:10px;border:none;';
+    btn.textContent = it.label;
+    btn.onclick = ()=>{
+      window.open(`https://wa.me/${it.phone || ''}?text=${encodeURIComponent(it.text)}`, '_blank');
+      btn.textContent = '✓ ' + it.label;
+      btn.disabled = true;
+      btn.style.opacity = 0.55;
+    };
+    btnWrap.appendChild(btn);
+  });
+  modal.appendChild(btnWrap);
+  const actions = document.createElement('div');
+  actions.className = 'modal-actions';
+  actions.style.marginTop = '14px';
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn-secondary';
+  closeBtn.textContent = 'Chiudi';
+  closeBtn.onclick = ()=> overlay.remove();
+  actions.appendChild(closeBtn);
+  modal.appendChild(actions);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+}
+
 function showToast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg;
