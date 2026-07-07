@@ -259,6 +259,10 @@ const SHIFT_LABELS = {
 const SHIFT_ORDER = { mezza_giornata: 0, mattina: 1, giornata_intera: 2, pomeriggio: 3, riposo: 4, assente_malattia: 5 };
 const GIORNI = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
 
+// Marcatore usato come "pin" per il personale che compare solo nei turni, senza poter accedere all'app.
+// Non viene mai mostrato in chiaro: chi ha questo pin semplicemente non compare nella schermata di login.
+const NO_LOGIN_PIN = 'NOLOGIN';
+
 let currentUser = null;       // record da tabella addetti: {id, nome, ruolo, pin, attivo}
 let selectedAddetto = null;   // record selezionato in fase di login
 let allAddetti = [];          // cache di tutti gli addetti attivi
@@ -341,9 +345,10 @@ function effectiveShiftFor(addettoId, key, date){
 
 // addetti che fanno parte della pianificazione turni (esclude eventuali altri profili cassa)
 function scheduledAddetti(){
-  return allAddetti
-    .map(a => ({ ...a, _key: groupKeyFor(a.nome) }))
-    .filter(a => a._key !== null);
+  // Include tutti gli addetti attivi. Chi ha un nome riconosciuto (Totò, Davide, ecc.)
+  // ottiene un pattern automatico; gli altri (es. nuovo personale aggiunto) hanno _key=null
+  // e nessun turno di default, ma restano selezionabili per modifiche manuali/scambi rapidi.
+  return allAddetti.map(a => ({ ...a, _key: groupKeyFor(a.nome) }));
 }
 
 function swapPartnersFor(key){
@@ -367,9 +372,7 @@ async function loadAddetti(){
 function renderLoginGrid(){
   const grid = document.getElementById('user-grid');
   grid.innerHTML = '';
-  const scheduled = scheduledAddetti();
-  const others = allAddetti.filter(a => groupKeyFor(a.nome) === null); // es. admin puro, altri profili
-  const toShow = [...scheduled, ...others.map(a=>({...a,_key:null}))];
+  const toShow = scheduledAddetti().filter(a => a.pin !== NO_LOGIN_PIN);
 
   if (!toShow.length){
     grid.innerHTML = `<div style="grid-column:1/-1; font-size:13px; color:var(--char-soft)">
@@ -516,7 +519,7 @@ function renderWeek(){
         const info = SHIFT_LABELS[shift];
         const isMine = currentUser.id === a.id;
         const isAssente = shift === 'assente_malattia';
-        const canSwap = isMine && currentUser.ruolo !== 'admin' && !isAssente;
+        const canSwap = isMine && currentUser.ruolo !== 'admin' && !isAssente && swapPartnersFor(a._key).length > 0;
         bodyHtml += `
           <div class="shift-row${result.auto ? ' auto-swap' : ''}${isAssente ? ' assente' : ''}">
             <div class="shift-badge ${info.badge}">${info.icon}</div>
@@ -809,6 +812,34 @@ function renderAdmin(){
     <h3 style="margin-top:28px">Gestione PIN di accesso</h3>
     <p style="font-size:13px; color:var(--char-soft); margin-top:-8px">Modifica il PIN di accesso di ciascun addetto.</p>
     <div id="pin-list"></div>
+
+    <h3 style="margin-top:28px">Aggiungi nuovo dipendente</h3>
+    <p style="font-size:13px; color:var(--char-soft); margin-top:-8px">
+      Non avrà un turno automatico assegnato dal pattern (a meno che il nome non corrisponda a uno schema già noto): i suoi turni vanno assegnati a mano da "Modifica turno manuale" qui sopra.
+    </p>
+    <label class="form-label">Nome</label>
+    <input type="text" class="form-input" id="new-emp-nome" placeholder="Es. Salvo">
+
+    <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--char); margin-bottom:14px;">
+      <input type="checkbox" id="new-emp-access" checked onchange="togglePinField()" style="width:16px; height:16px;">
+      Deve poter accedere con PIN
+    </label>
+    <div id="new-emp-pin-wrap">
+      <label class="form-label">PIN</label>
+      <input type="text" class="form-input" id="new-emp-pin" inputmode="numeric" placeholder="Es. 1234">
+    </div>
+    <p id="new-emp-noaccess-note" style="display:none; font-size:12.5px; color:var(--char-soft); margin-top:-8px; margin-bottom:14px;">
+      Comparirà solo nei turni e nei menu di modifica/scambio rapido dell'admin — non potrà accedere all'app né fare scambi da solo.
+    </p>
+
+    <label class="form-label">Ruolo</label>
+    <select class="form-select" id="new-emp-ruolo">
+      <option value="addetto">Addetto</option>
+      <option value="Banconista">Banconista</option>
+      <option value="Owner">Owner</option>
+      <option value="admin">Admin (accesso completo all'app)</option>
+    </select>
+    <button class="btn-primary" style="width:100%; padding:13px; border-radius:10px; border:none;" onclick="addNewEmployee()">Aggiungi dipendente</button>
   `;
 
   const sel = document.getElementById('admin-dip');
@@ -823,6 +854,31 @@ function renderAdmin(){
   document.getElementById('quick-date').value = fmtISO(new Date());
 
   renderPinList();
+}
+
+function togglePinField(){
+  const access = document.getElementById('new-emp-access').checked;
+  document.getElementById('new-emp-pin-wrap').style.display = access ? 'block' : 'none';
+  document.getElementById('new-emp-noaccess-note').style.display = access ? 'none' : 'block';
+}
+
+async function addNewEmployee(){
+  const nome = document.getElementById('new-emp-nome').value.trim();
+  const hasAccess = document.getElementById('new-emp-access').checked;
+  const pinInput = document.getElementById('new-emp-pin').value.trim();
+  const ruolo = document.getElementById('new-emp-ruolo').value;
+  if (!nome){ showToast('Inserisci il nome.'); return; }
+  if (hasAccess && !pinInput){ showToast('Inserisci un PIN, oppure disattiva "Deve poter accedere con PIN".'); return; }
+
+  const pin = hasAccess ? pinInput : NO_LOGIN_PIN;
+  const { error } = await sb.from('addetti').insert({ nome, pin, ruolo, attivo: true });
+  if (error){ showToast('Errore: ' + error.message); return; }
+
+  showToast(`${nome} aggiunto correttamente.`);
+  document.getElementById('new-emp-nome').value = '';
+  document.getElementById('new-emp-pin').value = '';
+  allAddetti = await loadAddetti();
+  renderAdmin();
 }
 
 async function saveOverride(){
@@ -871,13 +927,16 @@ async function quickSwap(){
 function renderPinList(){
   const list = document.getElementById('pin-list');
   if (!list) return;
-  list.innerHTML = allAddetti.map(a => `
+  list.innerHTML = allAddetti.map(a => {
+    const noAccess = a.pin === NO_LOGIN_PIN;
+    return `
     <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
-      <div style="flex:1; font-size:13.5px; font-weight:600;">${a.nome}</div>
-      <input type="text" class="form-input" style="margin-bottom:0; width:110px;" id="pin-input-${a.id}" value="${a.pin}" inputmode="numeric" maxlength="8">
+      <div style="flex:1; font-size:13.5px; font-weight:600;">${a.nome}${noAccess ? '<div style="font-size:11px; font-weight:400; color:var(--char-soft)">Nessun accesso — inserisci un PIN per abilitarlo</div>' : ''}</div>
+      <input type="text" class="form-input" style="margin-bottom:0; width:110px;" id="pin-input-${a.id}" value="${noAccess ? '' : a.pin}" placeholder="${noAccess ? 'PIN…' : ''}" inputmode="numeric" maxlength="8">
       <button class="swap-btn" onclick="savePin(${a.id})">Salva</button>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 async function savePin(addettoId){
@@ -907,7 +966,11 @@ function seraCountsForDate(date, overrideMapLocal){
   let banconisti = 0, laboratorio = 0;
   scheduledAddetti().forEach(a=>{
     const key = fmtISO(date) + '_' + a.id;
-    const tipo = overrideMapLocal[key] || baseShiftForKey(a._key, date);
+    let tipo = overrideMapLocal[key];
+    if (!tipo){
+      const base = baseShiftForKey(a._key, date);
+      tipo = base ? base.tipo : null;
+    }
     if (tipo === 'giornata_intera' || tipo === 'pomeriggio'){
       if (a._key === 'francesco') laboratorio++; else banconisti++;
     }
@@ -948,7 +1011,7 @@ async function renderStats(){
       continue;
     }
     const { banconisti } = seraCountsForDate(d, overrideMapLocal);
-    const highlight = banconisti >= SOGLIA_BANCONISTI;
+    const highlight = weekday !== 6 && banconisti >= SOGLIA_BANCONISTI;
     if (highlight) giorniEvidenziati++;
     cells.push({ dayNum: d.getDate(), banconisti, highlight });
   }
